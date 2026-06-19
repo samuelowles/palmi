@@ -1,0 +1,19 @@
+name = "palmi-api"
+main = "src/index.ts"
+compatibility_date = "2025-05-01"
+
+[vars]
+ENVIRONMENT = "production"
+
+# === Secrets — set via `wrangler secret put <NAME>` ===
+# Required: OPENAI_API_KEY, DEEPSEEK_API_KEY, REVENUECAT_WEBHOOK_SECRET, JWT_SECRET
+# Optional: TURNSTILE_SECRET_KEY (Turnstile bot protection)
+
+[[d1_databases]]
+binding = "DB"
+database_name = "palmi-db"
+database_id = "1fa28cda-e5ae-4cb0-8468-76971cb49307"
+
+[[kv_namespaces]]
+binding = "KV"
+id = "7ea954c254c34d4f875d8bcaeed0b3b0"

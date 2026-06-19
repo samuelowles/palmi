@@ -1,0 +1,88 @@
+# Dependencies
+node_modules/
+**/node_modules/
+
+# Expo
+.expo/
+.expo-shared/
+dist/
+web-build/
+expo-env.d.ts
+**/.expo/
+**/expo-env.d.ts
+
+# Native
+.kotlin/
+*.orig.*
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+*.ipa
+*.apk
+
+# Metro
+.metro-health-check*
+
+# Debug
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+*.log
+
+# macOS / Windows
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editors
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.idea/
+
+# Cloudflare local state
+.wrangler/
+**/.wrangler/
+
+# Local SQLite (Cloudflare D1 local dev)
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+**/miniflare-*.sqlite*
+
+# Ruvector DB
+ruvector.db
+
+# Tests
+coverage/
+
+# Env / Secrets
+.env
+.env.local
+.env.*.local
+app/.env
+cloudflare/.env
+**/.env
+
+# Temporary editor files
+*.tmp.*
+3}
+
+# Local session/agent state (not source of truth)
+.swarm/
+.claude-flow/
+.remember/
+ruvector.db
+
+# Binary artifacts / non-source docs
+*.xlsx
+conversation_log.txt
+
+# Local D1 state (large, ephemeral)
+**/.wrangler/state/
+
+# Build artifacts
+*.tsbuildinfo
+**/*.tsbuildinfo
