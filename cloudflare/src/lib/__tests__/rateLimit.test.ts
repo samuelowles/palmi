@@ -19,7 +19,7 @@ import {
   rateLimit,
   checkRateLimit,
   refundRateLimit,
-} from '../../lib/rateLimiter';
+} from '../rateLimiter';
 
 // ---------------------------------------------------------------------------
 // In-memory KV mock
@@ -226,7 +226,7 @@ describe('rateLimit middleware — failed responses refund budget', () => {
 describe('refundRateLimit', () => {
   it('decrements the counter and writes back with TTL = windowSeconds', async () => {
     const kv = createMockKV();
-    // Seed counter at 3
+    // Seed counter at 3 in the current window bucket.
     const granularity = 6;
     const now = Math.floor(Date.now() / 1000);
     const windowKey = Math.floor(now / granularity);
@@ -237,6 +237,7 @@ describe('refundRateLimit', () => {
       key: 'refund-test',
       maxRequests: 5,
       windowSeconds: 60,
+      windowKey,
     });
 
     expect(kv.store.get(limitKey)).toBe('2');
@@ -246,12 +247,40 @@ describe('refundRateLimit', () => {
 
   it('is a no-op when the counter is already 0', async () => {
     const kv = createMockKV();
+    const now = Math.floor(Date.now() / 1000);
+    const windowKey = Math.floor(now / 6);
     await refundRateLimit(kv as unknown as KVNamespace, {
       key: 'never-charged',
       maxRequests: 5,
       windowSeconds: 60,
+      windowKey,
     });
     // No writes should have happened
     expect(kv.puts.length).toBe(0);
+  });
+
+  it('targets the original windowKey even when the current clock is in a different bucket (boundary rollover)', async () => {
+    // Simulates an AI handler that took >1 granularity to respond, rolling
+    // the clock over into the next bucket. The refund must still decrement
+    // the bucket that was charged, NOT the current bucket.
+    const kv = createMockKV();
+    const granularity = 6;
+    const originalWindowKey = 1000;
+    const currentWindowKey = originalWindowKey + 5; // current clock is in a later bucket
+    const limitKey = `ratelimit:rollover-test:${originalWindowKey}`;
+    const wrongKey = `ratelimit:rollover-test:${currentWindowKey}`;
+    kv.store.set(limitKey, '4');
+    kv.store.set(wrongKey, '2');
+
+    await refundRateLimit(kv as unknown as KVNamespace, {
+      key: 'rollover-test',
+      maxRequests: 5,
+      windowSeconds: 60,
+      windowKey: originalWindowKey,
+    });
+
+    expect(kv.store.get(limitKey)).toBe('3');
+    // The "current" bucket was NOT touched
+    expect(kv.store.get(wrongKey)).toBe('2');
   });
 });
