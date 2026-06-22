@@ -13,8 +13,8 @@ export const synergyRoute = new Hono<{ Bindings: Env }>();
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-// Rate limit: 10 synergy comparisons per minute per client
-synergyRoute.use('/synergy', rateLimit({ maxRequests: 10, windowSeconds: 60 }));
+// Rate limit: 5 synergy comparisons per minute per client (PRD §5.2 / issue #16)
+synergyRoute.use('/synergy', rateLimit({ maxRequests: 5, windowSeconds: 60 }));
 
 synergyRoute.post('/synergy', async (c) => {
   try {
