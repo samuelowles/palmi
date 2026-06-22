@@ -4,19 +4,10 @@
  * Verifies that /api/read-palm:
  *   - reads the Turnstile token from body field `turnstileToken`
  *   - proceeds when siteverify returns success: true
- *   - returns a safe error when token is missing
- *   - returns 403 with a safe message when siteverify returns success: false
+ *   - returns 403 with a safe error message when token is missing or invalid
  *   - never logs or echoes the TURNSTILE_SECRET_KEY
  *   - fails closed (403) on siteverify network error
  *   - is fully skipped (verification bypassed) when TURNSTILE_SECRET_KEY is unset
- *
- * NOTE on issue #17 acceptance criteria:
- *   The acceptance criterion says "Missing/invalid token → 403 with safe error
- *   message."  The current implementation returns 400 for missing tokens and
- *   403 for invalid tokens.  These tests pin both behaviours so we can verify
- *   the security boundary is correct (invalid + network errors always 403,
- *   safe message, no upstream leak) while the gap on the missing-token status
- *   is documented in the PR for a follow-up.
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
@@ -104,7 +95,7 @@ describe('POST /api/read-palm — Turnstile middleware (issue #17)', () => {
     global.fetch = originalFetch;
   });
 
-  // 1) Missing token — pin current 400 behaviour, no upstream siteverify call.
+  // 1) Missing token — 403 with safe message, no upstream siteverify call.
   it('rejects requests with no token before invoking siteverify', async () => {
     const env = makeEnv();
     const app = buildApp();
@@ -114,7 +105,7 @@ describe('POST /api/read-palm — Turnstile middleware (issue #17)', () => {
       userId: 'user-1',
     });
 
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(403);
     const text = await res.text();
     const body = JSON.parse(text) as { error: string };
     expect(body.error).toBe('Bot verification required');
@@ -229,6 +220,36 @@ describe('POST /api/read-palm — Turnstile middleware (issue #17)', () => {
     const res = await postReadPalm(app, env, {
       imageBase64: TINY_IMAGE_BASE64,
       userId: 'user-no-secret',
+    });
+
+    expect(res.status).toBe(200);
+    const calledUrls = fetchMock.mock.calls.map((c) => c[0]);
+    expect(calledUrls).not.toContain('https://challenges.cloudflare.com/turnstile/v0/siteverify');
+  });
+
+  // 4b) Missing env (undefined) → verification SKIPPED, same as empty string.
+  it('skips Turnstile verification when TURNSTILE_SECRET_KEY is undefined', async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        choices: [{ message: { content: JSON.stringify({
+          lines: [{ type: 'heart', label: 'Heart Line', strength: 50,
+                    archetype: 'The Main Character', emoji: '✨',
+                    shortSummary: 'You feel deeply.', rawAnalysis: 'r.' }],
+          overallArchetype: 'The Main Character', overallArchetypeEmoji: '✨',
+          overallSummary: 'A vibrant story.',
+        })}}],
+      }),
+    );
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({ choices: [{ message: { content: 'synth text' } }] }),
+    );
+
+    const env = makeEnv({ TURNSTILE_SECRET_KEY: undefined });
+    const app = buildApp();
+
+    const res = await postReadPalm(app, env, {
+      imageBase64: TINY_IMAGE_BASE64,
+      userId: 'user-no-secret-undefined',
     });
 
     expect(res.status).toBe(200);
