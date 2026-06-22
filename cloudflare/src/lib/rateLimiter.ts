@@ -36,12 +36,41 @@ export async function checkRateLimit(
     return true; // Rate limited
   }
 
-  // Increment with short TTL (2x window for cleanup safety)
+  // Increment with TTL equal to the window so the counter auto-resets
+  // (issue #16 / PRD §5.2: keys must auto-expire after 60s).
   await kv.put(limitKey, String(current + 1), {
-    expirationTtl: windowSeconds * 2,
+    expirationTtl: windowSeconds,
   });
 
   return false;
+}
+
+/**
+ * Refund a previously-charged slot back to the budget. Used by the Hono
+ * middleware when the downstream handler returns a 4xx/5xx — failed requests
+ * must not consume the client's rate-limit budget (issue #16 acceptance #4).
+ *
+ * The KV key is recomputed the same way as `checkRateLimit` so the refund
+ * targets the exact window the request was charged against. If the value
+ * has already expired (TTL elapsed) the put is a no-op.
+ */
+export async function refundRateLimit(
+  kv: KVNamespace,
+  options: RateLimitOptions
+): Promise<void> {
+  const { key, windowSeconds } = options;
+  const granularity = Math.max(1, Math.floor(windowSeconds / 10));
+  const now = Math.floor(Date.now() / 1000);
+  const windowKey = Math.floor(now / granularity);
+  const limitKey = `ratelimit:${key}:${windowKey}`;
+
+  const count = await kv.get(limitKey);
+  const current = parseInt(count || '0', 10);
+  if (current <= 0) return;
+
+  await kv.put(limitKey, String(current - 1), {
+    expirationTtl: windowSeconds,
+  });
 }
 
 /**
@@ -80,6 +109,18 @@ export function rateLimit(options: {
       return c.json({ error: 'Too many requests. Please slow down.' }, 429);
     }
 
-    return next();
+    // Run downstream handler, then refund the budget slot if the response
+    // was a 4xx/5xx. issue #16 acceptance #4: only successful (2xx)
+    // responses should consume the per-IP budget.
+    await next();
+
+    const status = c.res?.status ?? 0;
+    if (status >= 400) {
+      await refundRateLimit(kv, {
+        key: clientKey,
+        maxRequests: options.maxRequests,
+        windowSeconds: options.windowSeconds,
+      });
+    }
   };
 }
