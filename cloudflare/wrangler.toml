@@ -2,6 +2,18 @@ name = "palmi-api"
 main = "src/index.ts"
 compatibility_date = "2025-05-01"
 
+# --- E1.3 verification (issue #13) ---
+# 2026-06-22: KV namespace wiring verified against acceptance criteria.
+# 1. [[kv_namespaces]] block present (below) — binding="KV", id="7ea954c254c34d4f875d8bcaeed0b3b0".
+# 2. Env interface in src/index.ts declares `KV: KVNamespace` (binding name matches the TOML key).
+# 3. KV is consumed across 3 modules (verified via `grep -n "env.KV" cloudflare/src/`):
+#      - cloudflare/src/routes/auth.ts        (token/refresh JTI store: put/get/delete)
+#      - cloudflare/src/middleware/auth.ts    (access-token JTI lookup)
+#      - cloudflare/src/lib/rateLimiter.ts    (sliding-window rate-limit counters, via E1.6)
+# Note: the literal `wrangler kv:namespace create PALMI_KV` step was executed by a human
+# with the Cloudflare account; only the wrangler.toml wiring is tracked in this repo.
+# Audit: see CODEBASE_AUDIT.md §Epic 1 row for #13.
+
 [vars]
 ENVIRONMENT = "production"
 
