@@ -20,6 +20,13 @@
 #   ./scripts/deploy-verify.sh
 #   ./scripts/deploy-verify.sh "https://palmi-api.example.workers.dev"
 #   WORKER_URL="https://palmi-api.example.workers.dev" ./scripts/deploy-verify.sh
+#
+# Dry-run mode (offline / lintable):
+#   DEPLOY_DRY_RUN=1 WORKER_URL="https://palmi-api.example.workers.dev" \
+#     ./scripts/deploy-verify.sh
+#   Skips wrangler deploy and reads the health body from
+#   scripts/tests/fixtures/health-ok.json instead of the live URL. Useful for
+#   CI lint and for verifying the script's logic without Cloudflare creds.
 
 set -euo pipefail
 
@@ -37,18 +44,32 @@ if [ "${WORKER_URL-}" = "" ]; then
   exit 2
 fi
 
-echo "==> Deploying palmi-api worker..."
-npx wrangler deploy
+DRY_RUN="${DEPLOY_DRY_RUN:-0}"
 
 # Strip any trailing slash for the final concatenation.
 WORKER_URL="${WORKER_URL%/}"
 HEALTH_URL="${WORKER_URL}/"
 
-echo "==> Verifying health endpoint at ${HEALTH_URL}"
-TMP_BODY="$(mktemp)"
-trap 'rm -f "$TMP_BODY"' EXIT
+if [ "$DRY_RUN" = "1" ]; then
+  echo "==> DEPLOY_DRY_RUN=1: skipping wrangler deploy"
+  FIXTURE="$(dirname "$0")/tests/fixtures/health-ok.json"
+  if [ ! -f "$FIXTURE" ]; then
+    echo "FAIL: dry-run fixture missing: $FIXTURE" >&2
+    exit 1
+  fi
+  TMP_BODY="$FIXTURE"
+  HTTP_CODE="200"
+else
+  echo "==> Deploying palmi-api worker..."
+  npx wrangler deploy
 
-HTTP_CODE=$(curl -sS -o "$TMP_BODY" -w "%{http_code}" "$HEALTH_URL")
+  echo "==> Verifying health endpoint at ${HEALTH_URL}"
+  TMP_BODY="$(mktemp)"
+  trap 'rm -f "$TMP_BODY"' EXIT
+
+  HTTP_CODE=$(curl -sS -o "$TMP_BODY" -w "%{http_code}" "$HEALTH_URL")
+fi
+
 echo "    HTTP ${HTTP_CODE}"
 echo "    Body: $(cat "$TMP_BODY")"
 
@@ -57,13 +78,24 @@ if [ "$HTTP_CODE" != "200" ]; then
   exit 1
 fi
 
-EXPECTED='{"status":"ok","service":"palmi-api","version":"1.0.0"}'
-ACTUAL="$(cat "$TMP_BODY")"
+# JSON shape check — resilient to property ordering and semver bumps.
+# (An exact-string match fails because some clients re-serialize keys
+# alphabetically.) Uses grep -E; requires GNU grep or macOS BSD grep (both OK).
+BODY="$(cat "$TMP_BODY")"
 
-if [ "$ACTUAL" != "$EXPECTED" ]; then
-  echo "FAIL: health body mismatch." >&2
-  echo "  expected: $EXPECTED" >&2
-  echo "  actual:   $ACTUAL" >&2
+if ! printf '%s' "$BODY" | grep -Eq '"status"[[:space:]]*:[[:space:]]*"ok"'; then
+  echo "FAIL: health body.status expected 'ok'." >&2
+  echo "  body: $BODY" >&2
+  exit 1
+fi
+if ! printf '%s' "$BODY" | grep -Eq '"service"[[:space:]]*:[[:space:]]*"palmi-api"'; then
+  echo "FAIL: health body.service expected 'palmi-api'." >&2
+  echo "  body: $BODY" >&2
+  exit 1
+fi
+if ! printf '%s' "$BODY" | grep -Eq '"version"[[:space:]]*:[[:space:]]*"[0-9]+\.[0-9]+\.[0-9]+"'; then
+  echo "FAIL: health body.version expected semver (e.g. 1.0.0)." >&2
+  echo "  body: $BODY" >&2
   exit 1
 fi
 
