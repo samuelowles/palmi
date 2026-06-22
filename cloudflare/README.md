@@ -71,7 +71,7 @@ npx wrangler d1 create palmi-db
 
 ```
 🌀 Creating database "palmi-db"...
-✅ Successfully created DB 'palmi-db' in region ENAM
+✅ Successfully created DB 'palmi-db' in region WEU
 Created your new D1 database.
 
 [[d1_databases]]
@@ -204,13 +204,21 @@ Lists the 10 most recent deployments with version IDs and timestamps.
 npx wrangler deployments list
 ```
 
-### View bindings
+### View bindings (dashboard)
 
-Lists D1 + KV + secret bindings attached to the current Worker.
+`wrangler` has no CLI subcommand that lists the D1, KV, and secret bindings
+attached to a deployed Worker. To inspect them, open the Worker in the
+Cloudflare dashboard:
 
-```bash
-npx wrangler deployments status
 ```
+https://dash.cloudflare.com/<account_id>/workers/services/view/palmi-api
+```
+
+**Settings → Variables** shows all bindings (D1, KV, secrets, plain-text vars)
+and their resolved IDs. **Settings → Triggers** shows routes and custom
+domains. For live request-level inspection (which env vars were resolved,
+which binding was hit), use `wrangler tail` (see *View logs* above) — it
+prints the `env` snapshot for each invocation.
 
 ### Rollback / disable
 
