@@ -1,0 +1,26 @@
+# Palmi Worker — local dev secrets (DO NOT commit real values)
+#
+# This file is a TEMPLATE. Copy it to `cloudflare/.dev.vars` and fill in real
+# values for local development. `wrangler dev` reads `.dev.vars` automatically.
+#
+#   cp cloudflare/.dev.vars.example cloudflare/.dev.vars
+#
+# `.dev.vars` must be git-ignored. The `.example` template is intentionally
+# tracked so new contributors know what to set.
+# Production secrets are managed separately via `wrangler secret put <NAME>`
+# — see cloudflare/docs/E1.4-secrets-procedure.md.
+
+# OpenAI API key — gpt-5.4-mini palm-vision calls
+OPENAI_API_KEY="sk-replace-me"
+
+# DeepSeek API key — text synthesis calls
+DEEPSEEK_API_KEY="ds-replace-me"
+
+# RevenueCat webhook signing secret (from app.revenuecat.com → Integrations)
+REVENUECAT_WEBHOOK_SECRET="rc-whsec-replace-me"
+
+# Cloudflare Turnstile secret key (1x0000000000000000000000000000000AA is the documented sandbox value)
+TURNSTILE_SECRET_KEY="0x0000000000000000000000000000000AA"
+
+# JWT signing secret for auth tokens (5th secret — not part of issue #14 scope)
+JWT_SECRET="replace-me-with-32-bytes-random"
