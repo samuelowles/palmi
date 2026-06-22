@@ -52,9 +52,21 @@ npx wrangler deploy
 
 ### 1.7 Verify Backend
 ```bash
-curl https://palmi-api.workers.dev/
+# Use the URL `wrangler deploy` printed (or `npx wrangler deployments list`).
+# Placeholder — replace <your-subdomain> with the actual subdomain wrangler
+# prints on first deploy.
+curl https://palmi-api.<your-subdomain>.workers.dev/
 # Should return: {"status":"ok","service":"palmi-api","version":"1.0.0"}
 ```
+
+**Live URL (recorded from first deploy):** `https://palmi-api.<your-subdomain>.workers.dev`
+
+> The actual subdomain is printed by `wrangler deploy` on first run and is
+> also retrievable any time with `npx wrangler deployments list`. Replace
+> `<your-subdomain>` above with the real value, then run the curl to confirm
+> `200 OK` and the health body shape. The deploy-verify scripts
+> (`cloudflare/scripts/deploy-verify.sh` / `.ps1`) accept the URL via the
+> `WORKER_URL` env var.
 
 ---
 
