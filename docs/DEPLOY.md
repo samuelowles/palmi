@@ -37,21 +37,11 @@ npx wrangler d1 migrations apply palmi-db
 ```
 
 ### 1.5 Set Secrets
-Set each of the 5 required Worker secrets. See `cloudflare/docs/E1.4-secrets-procedure.md`
-for full procedure, rotation notes, and local-dev (`.dev.vars`) instructions.
-
 ```bash
-# Issue #14 — 4 required (per PRD §5.2 + docs/AI_RULES.md §Security)
 npx wrangler secret put OPENAI_API_KEY
 npx wrangler secret put DEEPSEEK_API_KEY
 npx wrangler secret put REVENUECAT_WEBHOOK_SECRET
-npx wrangler secret put TURNSTILE_SECRET_KEY    # REQUIRED — bot protection for /api/read-palm
-
-# Also required for the worker to start (5th secret, separate issue from #14)
-npx wrangler secret put JWT_SECRET              # HMAC for auth tokens
-
-# Verify
-npx wrangler secret list
+npx wrangler secret put TURNSTILE_SECRET_KEY  # optional — bot protection
 ```
 
 ### 1.6 Deploy Worker
