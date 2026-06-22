@@ -65,6 +65,7 @@ coverage/
 app/.env
 cloudflare/.env
 **/.env
+**/.dev.vars
 
 # Temporary editor files
 *.tmp.*
