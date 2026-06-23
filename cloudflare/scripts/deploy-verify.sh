@@ -30,7 +30,12 @@
 
 set -euo pipefail
 
-cd "$(dirname "$0")/.."
+# Capture the script's own directory BEFORE we cd, then change to its parent
+# (the cloudflare/ root). After the cd, $0 is unchanged but the cwd is now
+# cloudflare/, so any FIXTURE/HEALTH_URL path that is relative to $0 will
+# resolve against the wrong base — compute paths from SCRIPT_DIR instead.
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+cd "$SCRIPT_DIR/.."
 
 # Accept WORKER_URL from arg or env; otherwise require it.
 if [ "${1-}" != "" ]; then
@@ -52,7 +57,7 @@ HEALTH_URL="${WORKER_URL}/"
 
 if [ "$DRY_RUN" = "1" ]; then
   echo "==> DEPLOY_DRY_RUN=1: skipping wrangler deploy"
-  FIXTURE="$(dirname "$0")/tests/fixtures/health-ok.json"
+  FIXTURE="$SCRIPT_DIR/tests/fixtures/health-ok.json"
   if [ ! -f "$FIXTURE" ]; then
     echo "FAIL: dry-run fixture missing: $FIXTURE" >&2
     exit 1
