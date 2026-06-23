@@ -37,11 +37,21 @@ npx wrangler d1 migrations apply palmi-db
 ```
 
 ### 1.5 Set Secrets
+Set each of the 5 required Worker secrets. See `cloudflare/docs/E1.4-secrets-procedure.md`
+for full procedure, rotation notes, and local-dev (`.dev.vars`) instructions.
+
 ```bash
+# Issue #14 — 4 required (per PRD §5.2 + docs/AI_RULES.md §Security)
 npx wrangler secret put OPENAI_API_KEY
 npx wrangler secret put DEEPSEEK_API_KEY
 npx wrangler secret put REVENUECAT_WEBHOOK_SECRET
-npx wrangler secret put TURNSTILE_SECRET_KEY  # optional — bot protection
+npx wrangler secret put TURNSTILE_SECRET_KEY    # REQUIRED — bot protection for /api/read-palm
+
+# Also required for the worker to start (5th secret, separate issue from #14)
+npx wrangler secret put JWT_SECRET              # HMAC for auth tokens
+
+# Verify
+npx wrangler secret list
 ```
 
 ### 1.6 Deploy Worker
@@ -52,9 +62,21 @@ npx wrangler deploy
 
 ### 1.7 Verify Backend
 ```bash
-curl https://palmi-api.workers.dev/
+# Use the URL `wrangler deploy` printed (or `npx wrangler deployments list`).
+# Placeholder — replace <your-subdomain> with the actual subdomain wrangler
+# prints on first deploy.
+curl https://palmi-api.<your-subdomain>.workers.dev/
 # Should return: {"status":"ok","service":"palmi-api","version":"1.0.0"}
 ```
+
+**Live URL (recorded from first deploy):** `https://palmi-api.<your-subdomain>.workers.dev`
+
+> The actual subdomain is printed by `wrangler deploy` on first run and is
+> also retrievable any time with `npx wrangler deployments list`. Replace
+> `<your-subdomain>` above with the real value, then run the curl to confirm
+> `200 OK` and the health body shape. The deploy-verify scripts
+> (`cloudflare/scripts/deploy-verify.sh` / `.ps1`) accept the URL via the
+> `WORKER_URL` env var.
 
 ---
 

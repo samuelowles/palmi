@@ -51,9 +51,12 @@ $HealthUrl = "$WorkerUrl/"
 Write-Host "==> Verifying health endpoint at $HealthUrl"
 
 try {
-  $response = Invoke-RestMethod -Uri $HealthUrl -Method Get -TimeoutSec 30
-  $statusCode = 200
-  $body = ($response | ConvertTo-Json -Compress -Depth 10)
+  # Use Invoke-WebRequest so we get the raw body string without re-serialization.
+  # Invoke-RestMethod pre-parses JSON, then ConvertTo-Json re-emits it in
+  # alphabetical order, breaking exact-string body assertions.
+  $response = Invoke-WebRequest -Uri $HealthUrl -Method Get -TimeoutSec 30
+  $statusCode = [int]$response.StatusCode
+  $rawBody = $response.Content
 } catch {
   $statusCode = 0
   if ($_.Exception.Response) {
@@ -65,16 +68,33 @@ try {
 }
 
 Write-Host "    HTTP $statusCode"
-Write-Host "    Body: $body"
+Write-Host "    Body: $rawBody"
 
 if ($statusCode -ne 200) {
   Write-Error "FAIL: health endpoint returned HTTP $statusCode (expected 200)."
   exit 1
 }
 
-$expected = '{"status":"ok","service":"palmi-api","version":"1.0.0"}'
-if ($body -ne $expected) {
-  Write-Error "FAIL: health body mismatch.`n  expected: $expected`n  actual:   $body"
+try {
+  $body = $rawBody | ConvertFrom-Json
+} catch {
+  Write-Error "FAIL: health body is not valid JSON: $($_.Exception.Message)"
+  exit 1
+}
+
+# JSON shape check — resilient to property ordering and semver bumps.
+# ConvertTo-Json re-serializes keys alphabetically, so exact-string match
+# fails on every successful deploy. Assert fields instead.
+if ($body.status -ne 'ok') {
+  Write-Error "FAIL: health body.status expected 'ok', got '$($body.status)'."
+  exit 1
+}
+if ($body.service -ne 'palmi-api') {
+  Write-Error "FAIL: health body.service expected 'palmi-api', got '$($body.service)'."
+  exit 1
+}
+if ($body.version -notmatch '^\d+\.\d+\.\d+$') {
+  Write-Error "FAIL: health body.version expected semver (e.g. 1.0.0), got '$($body.version)'."
   exit 1
 }
 

@@ -6,11 +6,12 @@ Canonical reference for the GitHub issue structure on [`samuelowles/palmi`](http
 
 ## 1. Overview
 
-The backlog encodes the work to ship Palmi v1.0 (PRD §7 target). It is a three-level hierarchy built from the spec docs in `/docs`:
+The backlog encodes the work to ship Palmi v1.0 (PRD §7 target). It is a three-level hierarchy built from the spec docs in `/docs` and trimmed for Ponytail-style v1 execution:
 
-- **9 Epics** — major areas of work, each with a one-line goal
-- **78 Child issues** — shippable units of work attached to their parent epic
-- **7 Split-parent issues + 20 sub-issues** — child issues that were too large to ship in one go; split into sub-issues via GitHub's native parent–child relationship
+- **10 Epics** — the original 9 product/build epics plus #142 for v1-only UI/UX polish
+- **124 open issues** — 10 epics + 114 open child/sub-issues
+- **41 closed issues** — accidental duplicates, smoke-test issue, and post-v1 polish parked during the Ponytail trim
+- **16 `ready` issues** — unblocked and now carrying M3 execution rails
 
 Every non-epic issue body ends with a `## Blocked by` line referencing the GitHub issue numbers that must close first. Issues with no blockers and no external blockers carry the `ready` label.
 
@@ -19,23 +20,22 @@ Every non-epic issue body ends with a `## Blocked by` line referencing the GitHu
 ## 2. Hierarchy & labels
 
 ```
-Epic (label: epic)        ← #1..#9
+Epic (label: epic)        ← #1..#9, #142
 └── Child (no label)      ← attached via --parent <epic#>
     └── Sub-issue         ← attached via --parent <child#>, only for split children
 ```
 
 | Level | Count | What it is |
 |---|---|---|
-| Epic | 9 | Top-level area of work |
-| Child | 78 | Shippable unit, attached to an epic |
-| Split-parent child | 7 | A child too large to ship in one go (E3.7, E4.5, E4.6, E5.1, E5.4, E6.5, E6.7). Still attached to an epic; itself has sub-issues. |
-| Sub-issue | 20 | Granular work unit, attached to a split-parent child |
-| **Total open** | **114** | + 27 closed (1 smoke test + 26 accidental dupes) |
+| Epic | 10 | Top-level area of work |
+| Open non-epic | 114 | Shippable child/sub-issue work still open |
+| Closed | 41 | Historical duplicates/smoke-test + post-v1 polish parked as not planned for v1 |
+| **Total open** | **124** | Current live GitHub state after cleanup |
 
 **Labels in use:**
 
-- `epic` — the 9 epics only
-- `ready` — issues with empty blocker list AND not domain-blocked (12 issues as of v1)
+- `epic` — the 10 epics only
+- `ready` — issues with empty blocker list, not domain-blocked, and with M3 rails (16 issues after cleanup)
 
 No other labels are used. Children and sub-issues are unlabeled by design — the parent relationship is the only structural glue.
 
@@ -54,6 +54,7 @@ No other labels are used. Children and sub-issues are unlabeled by design — th
 | 7 | Epic: Settings, History & Legal Compliance | [#7](https://github.com/samuelowles/palmi/issues/7) |
 | 8 | Epic: App Store Submission & EAS Pipeline | [#8](https://github.com/samuelowles/palmi/issues/8) |
 | 9 | Epic: Launch Readiness, Monitoring & Support | [#9](https://github.com/samuelowles/palmi/issues/9) |
+| 10 | Epic: V1 UI/UX Polish | [#142](https://github.com/samuelowles/palmi/issues/142) |
 
 ---
 
@@ -65,6 +66,7 @@ No other labels are used. Children and sub-issues are unlabeled by design — th
 4. **Phase 3a — Children created.** 78 issues created via `gh issue create --parent <epic#>`. Resumed once after a transient GraphQL error at issue #35.
 5. **Phase 3b — Splits created.** 7 split-parent issues created, then 20 sub-issues each attached to its split parent.
 6. **Phase 4 — Sequenced.** Each issue's body appended with a `## Blocked by` section. The `ready` label applied to issues with empty blocker lists and no external blockers.
+7. **Review cleanup — June 2026.** Fixed mojibake in 105 issue bodies, added verify-only notes to implemented tickets, patched security/product gaps (#14, #50, #143, #171–#173), normalized pricing to $1.99/week, trimmed Epic #142 to v1-critical polish, and added M3 rails to every ready issue.
 
 All scripts and manifests live outside the repo at `C:\Users\sam\AppData\Local\Temp\palmi-issues\` (see §9).
 
@@ -95,7 +97,7 @@ E6.7 (compare parent) ──→ E6.7.{1,2,3}, E6.9
 E4.5 (webhook sig)    ──→ E4.6 (state map) ──→ E4.6.{1,2}
 ```
 
-**The 12 currently `ready` issues** (no in-scope blockers, no domain blocker):
+**The 16 currently `ready` issues** (no in-scope blockers, no domain blocker, M3 rails present):
 
 | ID | Issue | Notes |
 |---|---|---|
@@ -111,6 +113,10 @@ E4.5 (webhook sig)    ──→ E4.6 (state map) ──→ E4.6.{1,2}
 | E9.7 | [#85](https://github.com/samuelowles/palmi/issues/85) | Review-response workflow |
 | E9.8 | [#86](https://github.com/samuelowles/palmi/issues/86) | TikTok launch content |
 | E9.9 | [#87](https://github.com/samuelowles/palmi/issues/87) | Pinned-comment template |
+| E10.5 | [#147](https://github.com/samuelowles/palmi/issues/147) | Accessibility pass |
+| E10.6 | [#148](https://github.com/samuelowles/palmi/issues/148) | Empty/loading/error states |
+| E10.14 | [#156](https://github.com/samuelowles/palmi/issues/156) | Copy/disclaimer audit |
+| E9.11 | [#173](https://github.com/samuelowles/palmi/issues/173) | Rotate exposed GitHub PAT |
 
 **Domain-blocked (no code blocker, but `getpalmi.com` not yet acquired):**
 
@@ -126,7 +132,7 @@ These carry the note `_(also blocked on: getpalmi.com domain acquisition)_` in t
 **If it fits under an existing child**, add it to the body of that child as an acceptance-criteria checkbox — do not create a new issue.
 
 **If it is genuinely new work**, determine:
-1. **Which epic** (E1–E9)? See §3.
+1. **Which epic** (E1–E10)? See §3.
 2. **What blocks it**? Look at adjacent issues in the same epic and the dependency rules in §5.
 3. **Who blocks it**? Use internal IDs (E1.1 etc.) — translate to GitHub numbers via §10.
 
@@ -261,15 +267,19 @@ cd "/c/Users/sam/AppData/Local/Temp/palmi-issues"
 | E5.8 | 48 | E9.4 | 82 | E9.5 | 83 |
 | E5.9 | 49 | E9.6 | 84 | E9.7 | 85 |
 | E9.8 | 86 | E9.9 | 87 | E9.10 | 88 |
+| E6.12 | 171 | E9.11 | 173 | E9.12 | 172 |
+| E10.5 | 147 | E10.6 | 148 | E10.8 | 150 |
+| E10.9 | 151 | E10.13 | 155 | E10.14 | 156 |
 
 ---
 
 ## 11. Open items & caveats
 
 - **Domain `getpalmi.com` is not yet acquired.** Required before [E7.7](https://github.com/samuelowles/palmi/issues/65) and [E7.8](https://github.com/samuelowles/palmi/issues/66) can close. The [epic #7 body](https://github.com/samuelowles/palmi/issues/7) calls this out.
-- **GitHub PAT was pasted into the chat transcript** during backlog setup. Rotate it in GitHub → Settings → Developer settings → Personal access tokens if the transcript is in a sensitive store.
+- **GitHub PAT was pasted into the chat transcript** during backlog setup. Tracked as ready issue [#173](https://github.com/samuelowles/palmi/issues/173); rotate it in GitHub → Settings → Developer settings → Personal access tokens if the transcript is in a sensitive store.
 - **26 issues closed as accidental duplicates** (numbers #114–#139). They were created when `create_subs.py` was re-run to pick up 2 missed sub-issues; the print encoding error stopped the first run partway and the re-run created a fresh full set. All closed with a "Duplicate of earlier batch" comment. Safe to leave as historical record, or `gh issue delete` if the owner has admin rights.
 - **Smoke-test issue #10** was created to verify `--parent` works and then closed. Title `_smoke_test_delete_me`.
+- **Post-v1 UI/UX extras parked** (numbers #143–#146, #149, #152–#154, #157–#162). V1 keeps only #147, #148, #150, #151, #155, and #156 under Epic #142.
 - **No automation of `ready` label updates.** When you close a blocker, manually `gh issue edit` each newly-unblocked issue to add the label. A `hooks/listen`-style bot could be added later.
 
 ---
