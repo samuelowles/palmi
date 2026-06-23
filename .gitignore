@@ -69,13 +69,21 @@ cloudflare/.env
 
 # Temporary editor files
 *.tmp.*
-3}
+/3[}]
 
 # Local session/agent state (not source of truth)
 .swarm/
 .claude-flow/
 .remember/
-ruvector.db
+
+# Claude config: ignore the regenerating claude-flow harness, keep only the
+# Palmi autonomous loop scaffolding. Allowlist below is the source of truth.
+.claude/*
+!.claude/loop/
+!.claude/commands/
+.claude/commands/*
+!.claude/commands/autoloop.md
+!.claude/commands/palmi/
 
 # Binary artifacts / non-source docs
 *.xlsx
@@ -87,3 +95,7 @@ conversation_log.txt
 # Build artifacts
 *.tsbuildinfo
 **/*.tsbuildinfo
+
+# Stale root context dumps
+task.md
+walkthrough.md
