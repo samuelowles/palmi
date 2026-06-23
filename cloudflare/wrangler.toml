@@ -18,8 +18,7 @@ compatibility_date = "2025-05-01"
 ENVIRONMENT = "production"
 
 # === Secrets — set via `wrangler secret put <NAME>` ===
-# Required: OPENAI_API_KEY, DEEPSEEK_API_KEY, REVENUECAT_WEBHOOK_SECRET, JWT_SECRET
-# Optional: TURNSTILE_SECRET_KEY (Turnstile bot protection)
+# Required: OPENAI_API_KEY, DEEPSEEK_API_KEY, REVENUECAT_WEBHOOK_SECRET, JWT_SECRET, TURNSTILE_SECRET_KEY
 
 [[d1_databases]]
 binding = "DB"

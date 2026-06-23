@@ -1,7 +1,7 @@
 # Palmi App Store Readiness Review
 
 **Date:** 2026-05-14
-**Reviewers:** ruflo-core:reviewer, ruflo-security-audit:security-auditor, ruflo-core:researcher
+**Reviewers:** Palmi product/security review
 **Verdict:** Would not pass Apple App Store verification today — 3 critical blockers, 1 critical security vulnerability, 5 high-risk items.
 
 ---
@@ -36,8 +36,8 @@ User identity is entirely client-controlled. The app sends a self-asserted UUID 
 ### 1. Missing PrivacyInfo.xcprivacy (Guideline 5.1.1)
 Apple requires a privacy manifest declaring all data collection since April 2024. The app collects palm images, user ID, device info, analytics events, and subscription data — none declared. **Automatic rejection.**
 
-### 2. Pricing Mismatch (Guideline 3.1.1)
-[terms-of-service.md:17](legal/terms-of-service.md#L17) says **$0.99/week**. [config.ts:35](app/constants/config.ts#L35) says **$1.99/week**. Apple reviewers cross-check TOS pricing against App Store Connect IAP. Mismatch = rejection.
+### 2. Pricing Consistency (Guideline 3.1.1)
+[terms-of-service.md:17](legal/terms-of-service.md#L17), [config.ts:35](app/constants/config.ts#L35), and [docs/PRD.md:57](docs/PRD.md#L57) now say **$1.99/week**. Apple reviewers cross-check TOS pricing against App Store Connect IAP, so keep this value in sync.
 
 ### 3. Test API Key in Production (Guideline 2.3.1)
 RevenueCat test key (`test_vzPFfnDHKQUaOsEwvivYiqWBXXq`) hardcoded in [config.ts:12](app/constants/config.ts#L12). Sandbox purchases will fail during review. EAS submit config ([eas.json:39-41](app/eas.json#L39)) also has empty `appleId`, `ascAppId`, `appleTeamId` — submission mechanically impossible.
@@ -73,7 +73,7 @@ RevenueCat test key (`test_vzPFfnDHKQUaOsEwvivYiqWBXXq`) hardcoded in [config.ts
 | 2.1 | App Completeness | AT RISK — backend dependency, no offline mode |
 | 2.3.1 | Accurate Metadata | FAIL — test API key, placeholder URLs |
 | 2.3.10 | Placeholder Content | PASS — only App Store URL is placeholder |
-| 3.1.1 | In-App Purchase | FAIL — price mismatch ($0.99 vs $1.99) |
+| 3.1.1 | In-App Purchase | PASS — price aligned at $1.99/week |
 | 3.2.2 | Unacceptable Business | AT RISK — "fortune telling" keyword + "future predictions" copy |
 | 4.0 | Design | PASS — cohesive dark theme, custom components |
 | 4.2 | Minimum Functionality | PASS — real AI integration, not a template |
@@ -113,7 +113,7 @@ RevenueCat test key (`test_vzPFfnDHKQUaOsEwvivYiqWBXXq`) hardcoded in [config.ts
 
 | Document | Price | Status |
 |---|---|---|
-| `legal/terms-of-service.md` line 17 | **$0.99/week** | WRONG |
+| `legal/terms-of-service.md` line 17 | **$1.99/week** | CORRECT |
 | `app/constants/config.ts` line 35 | **$1.99/week** | CORRECT |
 | `docs/DEPLOY.md` line 69 | **$1.99/week** | CORRECT |
 | `docs/PRD.md` line 57 | **$1.99/week** | CORRECT |
@@ -143,7 +143,7 @@ RevenueCat test key (`test_vzPFfnDHKQUaOsEwvivYiqWBXXq`) hardcoded in [config.ts
 
 ### Must Fix (blocking)
 1. Create `PrivacyInfo.xcprivacy` via Expo config plugin
-2. Fix TOS pricing: $0.99 → $1.99
+2. Keep TOS, PRD, config, RevenueCat, and App Store Connect pricing aligned at $1.99/week
 3. Replace test RevenueCat key with production key via EAS Secrets
 4. Fill in EAS submit credentials (appleId, ascAppId, appleTeamId)
 5. Deploy server-side auth tokens (JWT or opaque bearer + KV)
