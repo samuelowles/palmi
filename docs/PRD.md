@@ -22,7 +22,7 @@ Palmi is an AI-powered palm reading app that uses computer vision to analyze pal
 - Head Line analysis + archetype
 - Overall reading summary
 
-**Pro tier ($0.99/week):**
+**Pro tier ($1.99/week):**
 - Life Line (deep locked behind paywall with visible blur)
 - Future predictions
 - Love insights
@@ -122,4 +122,4 @@ Entertainment (Primary), Lifestyle (Secondary)
 - **Week 1:** Working build on TestFlight
 - **Week 2:** App Store submission
 - **Month 1:** 1,000 downloads via organic TikTok
-- **Month 3:** 10K MRR ($0.99/week × ~2,500 active subscribers)
+- **Month 3:** 10K MRR ($1.99/week × ~1,250 active subscribers)

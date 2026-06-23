@@ -72,7 +72,7 @@ palmRoute.post('/read-palm', async (c) => {
     // Turnstile bot verification (skipped if not configured)
     if (c.env.TURNSTILE_SECRET_KEY) {
       if (!turnstileToken) {
-        return c.json({ error: 'Bot verification required' }, 400);
+        return c.json({ error: 'Bot verification required' }, 403);
       }
       const isValid = await verifyTurnstile(turnstileToken, c.env.TURNSTILE_SECRET_KEY);
       if (!isValid) {
