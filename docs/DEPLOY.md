@@ -41,7 +41,8 @@ npx wrangler d1 migrations apply palmi-db
 npx wrangler secret put OPENAI_API_KEY
 npx wrangler secret put DEEPSEEK_API_KEY
 npx wrangler secret put REVENUECAT_WEBHOOK_SECRET
-npx wrangler secret put TURNSTILE_SECRET_KEY  # optional — bot protection
+npx wrangler secret put TURNSTILE_SECRET_KEY  # required — bot protection
+npx wrangler secret put JWT_SECRET            # required — token signing (added for E1.5; see cloudflare/wrangler.toml)
 ```
 
 ### 1.6 Deploy Worker
