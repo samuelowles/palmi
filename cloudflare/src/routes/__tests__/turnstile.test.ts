@@ -86,13 +86,13 @@ describe('POST /api/read-palm — Turnstile middleware (issue #17)', () => {
   let fetchMock: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
-    originalFetch = global.fetch;
+    originalFetch = globalThis.fetch;
     fetchMock = vi.fn();
-    global.fetch = fetchMock as unknown as typeof fetch;
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
   });
 
   afterEach(() => {
-    global.fetch = originalFetch;
+    globalThis.fetch = originalFetch;
   });
 
   // 1) Missing token — 403 with safe message, no upstream siteverify call.
