@@ -127,3 +127,56 @@ runbook (owned by E1.9).
 Neither script hardcodes account IDs, worker URLs, or credentials. Everything
 sensitive is read from the wrangler auth context (`wrangler login`) and the
 `WORKER_URL` env var.
+
+
+## `migrate-verify.mjs` — local migration reversibility check
+
+The `db:migrate:verify` script exercises the **apply → drop → reapply** cycle
+on a fresh in-memory SQLite database (D1 is built on SQLite; `node:sqlite`
+gives the same SQL semantics locally, with no Cloudflare credentials required).
+
+This is the local check for [issue #25](https://github.com/samuelowles/palmi/issues/25)
+acceptance criteria:
+
+1. Apply → drop → reapply cycle succeeds on a fresh local D1
+2. No orphaned indexes or tables after rollback
+3. Migration log committed for traceability (see `cloudflare/migrations/MIGRATIONS.md`)
+
+### Running
+
+From the `cloudflare/` directory:
+
+```bash
+node scripts/migrate-verify.mjs
+# or
+npm run db:migrate:verify
+```
+
+A successful run prints:
+
+```
+OK: migrations are reversible — apply / drop / reapply cycle matches.
+```
+
+### How it works
+
+| Step | Action | Assertion |
+|---|---|---|
+| 1 | Open `:memory:` SQLite DB, apply every `migrations/*.sql` in order. | Snapshot must contain ≥ 1 table. |
+| 2 | Apply every `migrations/down/*.sql` in **reverse** order. | Snapshot must be empty (no orphan tables or indexes — only `sqlite_%` internals remain). |
+| 3 | Re-apply every `migrations/*.sql`. | Snapshot must byte-match Step 1. |
+
+### Prerequisites
+
+- Node ≥ 22.5 (for `node:sqlite` — verified on Node 24).
+- The paired UP / DOWN SQL files exist (one per migration, identical filename).
+  Wrangler only reads `*.sql` directly inside `migrations/` (non-recursive),
+  so the `migrations/down/` subdirectory is invisible to `wrangler d1 migrations apply`.
+
+### What to do on failure
+
+| Failure | Likely cause | First action |
+|---|---|---|
+| `migration count mismatch` | A new UP migration was added without a matching DOWN. | Add `migrations/down/<same-name>.sql` with the reverse DDL. |
+| `orphan schema after rollback` | A DOWN migration didn't drop everything its UP created (e.g. missed an index or column). | Compare the offending UP file to its DOWN — every `CREATE` needs a matching `DROP`. |
+| `schema drift after re-apply` | A UP migration is not idempotent against the schema its prior DOWN leaves behind. | Usually a missing `IF NOT EXISTS`, or an `ALTER TABLE` that depends on prior state. |
