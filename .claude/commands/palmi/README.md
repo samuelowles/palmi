@@ -10,4 +10,4 @@ Use these templates from Claude Code/MiniMax sessions:
 - `build.md` — local build/deploy guardrails.
 - `autoloop.md` — deterministic autonomous epic driver.
 
-Default stance: `/ponytail full`, one issue, one branch, one PR, relevant checks, separate review, merge only if both pass, then continue the `/loop` without user input.
+Default stance: `/ponytail full`, `MiniMax-M3` through Claude Code, one issue, one branch, one PR, relevant checks, separate review, merge only if both pass, then continue the `/loop` without user input.

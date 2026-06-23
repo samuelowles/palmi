@@ -5,7 +5,7 @@
 
 You are working in the Palmi repo.
 
-First, read `CLAUDE.md` and follow it exactly.
+First, read `CLAUDE.md` and follow it exactly. Then use the deterministic driver instead of manual slash-command routing: `node .claude/loop/run-epic.mjs --claude-smoke`, then `node .claude/loop/run-epic.mjs <EPIC_NUMBER> --run`.
 
 Start with:
 

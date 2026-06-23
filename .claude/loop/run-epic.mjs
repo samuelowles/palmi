@@ -10,9 +10,10 @@
 //   node .claude/loop/run-epic.mjs <epicNumber> --run      # full autonomous loop, merges to main
 //
 // Env overrides (all optional):
-//   LOOP_REPO=owner/name   LOOP_MODEL=opus   LOOP_MAX_FIX=3   LOOP_MAX_REVIEW=3
+//   LOOP_REPO=owner/name   LOOP_MODEL=MiniMax-M3   LOOP_MAX_FIX=3   LOOP_MAX_REVIEW=3
 //   LOOP_BARE=0            LOOP_CLAUDE_TIMEOUT_MS=1200000
-//   LOOP_CLAUDE_SMOKE_TIMEOUT_MS=30000
+//   LOOP_CLAUDE_SMOKE_TIMEOUT_MS=30000   LOOP_MINIMAX_AUTH_TIMEOUT_MS=30000
+//   LOOP_REQUIRE_MINIMAX=0 # only for deliberate non-MiniMax tests
 
 import { spawnSync } from 'node:child_process';
 import { writeFileSync, readFileSync, existsSync, rmSync } from 'node:fs';
@@ -21,12 +22,14 @@ import { join } from 'node:path';
 
 const REPO = process.env.LOOP_REPO || 'samuelowles/palmi';
 const [OWNER, NAME] = REPO.split('/');
-const MODEL = process.env.LOOP_MODEL || '';
+const MODEL = process.env.LOOP_MODEL || 'MiniMax-M3';
 const MAX_FIX = +(process.env.LOOP_MAX_FIX || 3);
 const MAX_REVIEW = +(process.env.LOOP_MAX_REVIEW || 3);
 const BARE = process.env.LOOP_BARE !== '0';
 const CLAUDE_TIMEOUT = +(process.env.LOOP_CLAUDE_TIMEOUT_MS || 1200000);
 const CLAUDE_SMOKE_TIMEOUT = +(process.env.LOOP_CLAUDE_SMOKE_TIMEOUT_MS || 30000);
+const MINIMAX_AUTH_TIMEOUT = +(process.env.LOOP_MINIMAX_AUTH_TIMEOUT_MS || 30000);
+const REQUIRE_MINIMAX = process.env.LOOP_REQUIRE_MINIMAX !== '0';
 
 const SELF_CHECK = process.argv.includes('--self-check');
 const CLAUDE_SMOKE = process.argv.includes('--claude-smoke');
@@ -141,7 +144,39 @@ function claudeAgent(prompt, label, timeout = CLAUDE_TIMEOUT) {
   if (j.is_error) die(`claude ${label} error (api ${j.api_error_status || '?'}): ${j.result || ''}`);
   return (j.result || '').trim();
 }
+function miniMaxAuthCheck() {
+  if (!REQUIRE_MINIMAX) return;
+  const base = (process.env.ANTHROPIC_BASE_URL || '').replace(/\/+$/, '');
+  if (!/minimax/i.test(base)) die('ANTHROPIC_BASE_URL must point at MiniMax before --claude-smoke/--run; set LOOP_REQUIRE_MINIMAX=0 only for deliberate non-MiniMax tests');
+  if (!process.env.ANTHROPIC_API_KEY && !process.env.ANTHROPIC_AUTH_TOKEN) die('MiniMax auth missing: set ANTHROPIC_API_KEY or ANTHROPIC_AUTH_TOKEN before --claude-smoke/--run');
+  const code = `
+const base = (process.env.ANTHROPIC_BASE_URL || '').replace(/\\/+$/, '');
+const model = process.env.LOOP_MODEL || 'MiniMax-M3';
+const token = process.env.ANTHROPIC_AUTH_TOKEN || process.env.ANTHROPIC_API_KEY || '';
+const headers = { 'content-type': 'application/json', 'anthropic-version': '2023-06-01' };
+if (process.env.ANTHROPIC_AUTH_TOKEN) headers.Authorization = 'Bearer ' + token;
+else headers['x-api-key'] = token;
+const controller = new AbortController();
+const timeout = setTimeout(() => controller.abort(), Math.max(1000, +(process.env.LOOP_MINIMAX_AUTH_TIMEOUT_MS || 30000) - 1000));
+try {
+  const res = await fetch(base + '/v1/messages', {
+    method: 'POST', headers, signal: controller.signal,
+    body: JSON.stringify({ model, max_tokens: 1, messages: [{ role: 'user', content: 'Reply OK.' }] }),
+  });
+  const body = await res.text();
+  if (!res.ok) { console.error(res.status + ' ' + res.statusText + ': ' + body.slice(0, 500)); process.exit(1); }
+} catch (e) {
+  console.error(e.name === 'AbortError' ? 'request timed out' : e.message);
+  process.exit(1);
+} finally { clearTimeout(timeout); }
+`;
+  const r = run(process.execPath, ['-e', code], { timeout: MINIMAX_AUTH_TIMEOUT });
+  if (r.signal) die(`MiniMax auth check timed out after ${MINIMAX_AUTH_TIMEOUT}ms`);
+  if (r.code !== 0) die(`MiniMax auth check failed before Claude Code launch:\n${(r.err || r.out).slice(0, 800)}`);
+  log(`MiniMax auth check: ok (${MODEL})`);
+}
 function claudeSmoke() {
+  miniMaxAuthCheck();
   const result = claudeAgent('Reply exactly OK.', 'smoke', CLAUDE_SMOKE_TIMEOUT);
   if (!/^OK\b/i.test(result)) die(`claude smoke returned unexpected output: ${result.slice(0, 200)}`);
   log('claude smoke: ok');
@@ -357,6 +392,7 @@ Autonomous loop implementation for issue #${i.number}: ${i.title}
 function preflight() {
   log(`preflight for epic #${epic} in ${REPO}`);
   log(`claude: ${run('claude', ['--version']).out || 'MISSING'}`);
+  log(`model:  ${MODEL}`);
   log(`gh:     ${run('gh', ['--version']).out.split('\n')[0] || 'MISSING'}`);
   log(`git:    ${run('git', ['--version']).out || 'MISSING'}`);
   const auth = run('gh', ['auth', 'status']);

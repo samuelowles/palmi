@@ -8,6 +8,13 @@ Start every coding session with:
 
 If you are MiniMax/M3 wrapped by Claude Code, treat this file as the project contract. Work slowly, issue-by-issue, with tiny diffs. In `/loop`, continue without asking for user input until the epic has no ready unblocked issue left.
 
+## Claude Code / MiniMax runtime
+
+- The autonomous driver defaults to `LOOP_MODEL=MiniMax-M3`; do not let Claude Code fall back to auto/classifier model routing.
+- `ANTHROPIC_BASE_URL` must point at MiniMax, normally `https://api.minimax.io/anthropic`.
+- A valid MiniMax key must be available through `ANTHROPIC_API_KEY` or `ANTHROPIC_AUTH_TOKEN` before starting `/loop`.
+- `node .claude/loop/run-epic.mjs --claude-smoke` is a hard pre-run gate. If it fails, fix auth/config first; do not begin epic work.
+
 ## Source of truth
 
 - GitHub repo: `samuelowles/palmi`
