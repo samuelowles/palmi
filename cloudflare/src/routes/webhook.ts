@@ -10,6 +10,14 @@
  *   #101 Idempotency: each event.id is recorded in KV with a 7-day TTL so
  *        a replay short-circuits to 200 OK without re-running the state
  *        machine.
+ *
+ * Issue #91 (parent) covers:
+ *   #102 State transition mapping: each RC event type maps to a single
+ *        D1 UPDATE that mutates users.is_pro, users.subscription_expires,
+ *        and users.net_ltv to reflect the new subscription state.
+ *   #103 Lifecycle unit tests: full purchase → renew → cancel → expire
+ *        walk + concurrent (sequential) event ordering. Lives in
+ *        __tests__/webhook.test.ts under "state transitions".
  */
 
 import { Hono } from 'hono';
