@@ -1,13 +1,18 @@
 /**
- * RevenueCat webhook route tests - Issue #90
+ * RevenueCat webhook route tests - Issue #90 + Issue #91
  *   - #100: signature verification (Authorization: Bearer <secret>)
  *   - #101: idempotency / replay rejection (KV dedupe by event.id)
+ *   - #102: state transition mapping (INITIAL_PURCHASE / RENEWAL /
+ *          CANCELLATION / EXPIRATION → D1 user updates)
+ *   - #103: lifecycle unit tests (full purchase → renew → cancel → expire)
  *
  * Acceptance criteria covered:
  *   - Signature verified on every webhook call (#100)
  *   - Replay attacks are rejected (#101)
  *   - Idempotent: same event id processed once (#101)
  *   - KV TTL >= 7 days (#101)
+ *   - INITIAL_PURCHASE, RENEWAL, CANCELLATION, EXPIRATION handled (#102)
+ *   - Full state machine lifecycle covered (#103)
  *
  * The tests stub D1 + KV so no live Cloudflare bindings are needed.
  */
@@ -43,6 +48,30 @@ const noopStatement = {
     all: () => Promise.resolve({ results: [] }),
   }),
 };
+
+/**
+ * Recording D1 stub for the lifecycle / state-transition tests (#102, #103).
+ * Captures every `prepare(...).bind(...).run()` invocation so a test can
+ * assert on the exact SQL + bind args the route hands to D1.
+ */
+type DBCall = { sql: string; args: unknown[] };
+function makeRecordingDB(): D1Database & { calls: DBCall[] } {
+  const calls: DBCall[] = [];
+  const makeStmt = (sql: string) => ({
+    bind: (...args: unknown[]) => {
+      calls.push({ sql, args });
+      return {
+        run: () => Promise.resolve({ success: true }),
+        first: () => Promise.resolve({ is_pro: 0 }),
+        all: () => Promise.resolve({ results: [] }),
+      };
+    },
+  });
+  return {
+    prepare: makeStmt as unknown as D1Database['prepare'],
+    calls,
+  } as unknown as D1Database & { calls: DBCall[] };
+}
 
 function makeEnv(overrides: Partial<Env> = {}): Env {
   return {
@@ -274,5 +303,240 @@ describe('POST /api/webhook/rc - idempotency (issue #101)', () => {
     expect(res.status).toBe(200);
     const dedupePuts = kv.puts.filter((p) => p.key.startsWith('rc:event:'));
     expect(dedupePuts).toHaveLength(0);
+  });
+});
+describe('POST /api/webhook/rc - state transitions (issue #102, #103)', () => {
+  /**
+   * Build an RC event body with the bare-minimum fields the route needs.
+   * Tests only override the fields they care about.
+   */
+  function rcEvent(o: {
+    id?: string;
+    type: string;
+    expiration_at_ms?: number | null;
+    price?: number;
+    app_user_id?: string;
+  }): Record<string, unknown> {
+    return {
+      event: {
+        id: o.id ?? 'evt-default',
+        app_user_id: o.app_user_id ?? 'user-1',
+        type: o.type,
+        expiration_at_ms:
+          o.expiration_at_ms === null ? undefined : o.expiration_at_ms ?? 1893456000000,
+        price: o.price ?? 1.99,
+      },
+    };
+  }
+
+  function userUpdates(db: { calls: DBCall[] }): DBCall[] {
+    return db.calls.filter((c) => /UPDATE\s+users\b/i.test(c.sql));
+  }
+
+  // Issue #102 — INITIAL_PURCHASE → 'pro'
+  it('INITIAL_PURCHASE grants pro, sets subscription_expires, and credits net_ltv', async () => {
+    const db = makeRecordingDB();
+    const env = makeEnv({ DB: db });
+    const app = buildApp();
+    const expiresMs = 1893456000000;
+    const res = await postWebhook(
+      app,
+      env,
+      rcEvent({ id: 'evt-initial', type: 'INITIAL_PURCHASE', expiration_at_ms: expiresMs, price: 1.99 }),
+      'Bearer ' + env.REVENUECAT_WEBHOOK_SECRET,
+    );
+    expect(res.status).toBe(200);
+    const updates = userUpdates(db);
+    expect(updates).toHaveLength(1);
+    // Single statement mutates all three subscription columns in one UPDATE.
+    expect(updates[0].sql).toBe(
+      'UPDATE users SET is_pro = 1, subscription_expires = ?, net_ltv = net_ltv + ? WHERE id = ?',
+    );
+    // 85% net of $1.99 = $1.6915 (Apple Small Business Program).
+    expect(updates[0].args).toEqual([
+      new Date(expiresMs).toISOString(),
+      1.99 * 0.85,
+      'user-1',
+    ]);
+  });
+
+  // Issue #102 — RENEWAL → 'pro' (idempotent)
+  it('RENEWAL re-applies the pro state with the new expiration and credits net_ltv again', async () => {
+    const db = makeRecordingDB();
+    const env = makeEnv({ DB: db });
+    const app = buildApp();
+    const renewExpires = 1924992000000;
+    const res = await postWebhook(
+      app,
+      env,
+      rcEvent({ id: 'evt-renew', type: 'RENEWAL', expiration_at_ms: renewExpires, price: 1.99 }),
+      'Bearer ' + env.REVENUECAT_WEBHOOK_SECRET,
+    );
+    expect(res.status).toBe(200);
+    const updates = userUpdates(db);
+    expect(updates).toHaveLength(1);
+    // Identical SQL shape to INITIAL_PURCHASE → re-applying the same
+    // statement is a no-op for is_pro and accumulates net_ltv, which is
+    // the intended behavior for a renewal (new charge).
+    expect(updates[0].sql).toBe(
+      'UPDATE users SET is_pro = 1, subscription_expires = ?, net_ltv = net_ltv + ? WHERE id = ?',
+    );
+    expect(updates[0].args).toEqual([
+      new Date(renewExpires).toISOString(),
+      1.99 * 0.85,
+      'user-1',
+    ]);
+  });
+
+  // Issue #102 — CANCELLATION → 'free' (but keep pro access until expiry).
+  // The "free" outcome is delivered lazily via subscription_expires —
+  // is_pro stays untouched so the user keeps access until the period ends.
+  it('CANCELLATION updates subscription_expires without revoking is_pro', async () => {
+    const db = makeRecordingDB();
+    const env = makeEnv({ DB: db });
+    const app = buildApp();
+    const cancelExpires = 1893456000000;
+    const res = await postWebhook(
+      app,
+      env,
+      rcEvent({ id: 'evt-cancel', type: 'CANCELLATION', expiration_at_ms: cancelExpires }),
+      'Bearer ' + env.REVENUECAT_WEBHOOK_SECRET,
+    );
+    expect(res.status).toBe(200);
+    const updates = userUpdates(db);
+    expect(updates).toHaveLength(1);
+    // Only subscription_expires is mutated; is_pro and net_ltv are NOT
+    // touched. This is the "free but still has access" state encoded via
+    // the period-end timestamp.
+    expect(updates[0].sql).toBe(
+      'UPDATE users SET subscription_expires = ? WHERE id = ?',
+    );
+    expect(updates[0].args).toEqual([
+      new Date(cancelExpires).toISOString(),
+      'user-1',
+    ]);
+  });
+
+  // Issue #102 — EXPIRATION → 'free'
+  it('EXPIRATION revokes pro access by setting is_pro = 0', async () => {
+    const db = makeRecordingDB();
+    const env = makeEnv({ DB: db });
+    const app = buildApp();
+    const res = await postWebhook(
+      app,
+      env,
+      rcEvent({ id: 'evt-expire', type: 'EXPIRATION' }),
+      'Bearer ' + env.REVENUECAT_WEBHOOK_SECRET,
+    );
+    expect(res.status).toBe(200);
+    const updates = userUpdates(db);
+    expect(updates).toHaveLength(1);
+    expect(updates[0].sql).toBe('UPDATE users SET is_pro = 0 WHERE id = ?');
+    expect(updates[0].args).toEqual(['user-1']);
+  });
+
+  // Issue #103 — full state machine lifecycle:
+  //   purchase (pro) → renew (pro, new expiry) → cancel (still pro,
+  //   period-end recorded) → expire (free).
+  it('full lifecycle purchase → renew → cancel → expire walks the state machine', async () => {
+    const db = makeRecordingDB();
+    const env = makeEnv({ DB: db });
+    const app = buildApp();
+    const auth = 'Bearer ' + env.REVENUECAT_WEBHOOK_SECRET;
+
+    // 1. purchase
+    await postWebhook(
+      app,
+      env,
+      rcEvent({ id: 'lc-1', type: 'INITIAL_PURCHASE', expiration_at_ms: 1893456000000, price: 1.99 }),
+      auth,
+    );
+    // 2. renew
+    await postWebhook(
+      app,
+      env,
+      rcEvent({ id: 'lc-2', type: 'RENEWAL', expiration_at_ms: 1924992000000, price: 1.99 }),
+      auth,
+    );
+    // 3. cancel (still has access until period end)
+    await postWebhook(
+      app,
+      env,
+      rcEvent({ id: 'lc-3', type: 'CANCELLATION', expiration_at_ms: 1924992000000 }),
+      auth,
+    );
+    // 4. expire (pro access revoked)
+    await postWebhook(
+      app,
+      env,
+      rcEvent({ id: 'lc-4', type: 'EXPIRATION' }),
+      auth,
+    );
+
+    const updates = userUpdates(db);
+    expect(updates).toHaveLength(4);
+    expect(updates[0].sql).toMatch(/SET is_pro = 1, subscription_expires = \?, net_ltv = net_ltv \+ \?/);
+    expect(updates[0].args[2]).toBe('user-1');
+    expect(updates[1].sql).toMatch(/SET is_pro = 1, subscription_expires = \?, net_ltv = net_ltv \+ \?/);
+    expect(updates[1].args[1]).toBe(1.99 * 0.85); // second renewal also credited
+    expect(updates[2].sql).toBe('UPDATE users SET subscription_expires = ? WHERE id = ?');
+    expect(updates[3].sql).toBe('UPDATE users SET is_pro = 0 WHERE id = ?');
+  });
+
+  // Issue #103 — concurrent (sequential, since Workers is single-threaded)
+  // events for the same user are processed in arrival order.
+  it('sequential events for the same user apply UPDATEs in arrival order', async () => {
+    const db = makeRecordingDB();
+    const env = makeEnv({ DB: db });
+    const app = buildApp();
+    const auth = 'Bearer ' + env.REVENUECAT_WEBHOOK_SECRET;
+
+    await postWebhook(
+      app,
+      env,
+      rcEvent({ id: 'ce-1', type: 'INITIAL_PURCHASE', expiration_at_ms: 1893456000000, price: 1.99 }),
+      auth,
+    );
+    await postWebhook(
+      app,
+      env,
+      rcEvent({ id: 'ce-2', type: 'EXPIRATION' }),
+      auth,
+    );
+
+    const updates = userUpdates(db);
+    expect(updates).toHaveLength(2);
+    expect(updates[0].sql).toMatch(/SET is_pro = 1/);
+    expect(updates[1].sql).toBe('UPDATE users SET is_pro = 0 WHERE id = ?');
+  });
+
+  // Issue #102 — non-PRODUCT / unknown events must NOT mutate the user
+  // row (e.g., BILLING_ISSUE, future RC event types, malformed inputs).
+  it('BILLING_ISSUE writes no UPDATE and just logs (no pro revocation)', async () => {
+    const db = makeRecordingDB();
+    const env = makeEnv({ DB: db });
+    const app = buildApp();
+    const res = await postWebhook(
+      app,
+      env,
+      rcEvent({ id: 'evt-billing', type: 'BILLING_ISSUE' }),
+      'Bearer ' + env.REVENUECAT_WEBHOOK_SECRET,
+    );
+    expect(res.status).toBe(200);
+    expect(userUpdates(db)).toHaveLength(0);
+  });
+
+  it('unknown event type writes no UPDATE (forward-compatible)', async () => {
+    const db = makeRecordingDB();
+    const env = makeEnv({ DB: db });
+    const app = buildApp();
+    const res = await postWebhook(
+      app,
+      env,
+      rcEvent({ id: 'evt-future', type: 'SOMETHING_NEW_FROM_RC' }),
+      'Bearer ' + env.REVENUECAT_WEBHOOK_SECRET,
+    );
+    expect(res.status).toBe(200);
+    expect(userUpdates(db)).toHaveLength(0);
   });
 });
