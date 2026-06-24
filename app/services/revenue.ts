@@ -149,3 +149,15 @@ export async function identifyUser(userId: string): Promise<void> {
     console.error('[Revenue] Identify failed:', error);
   }
 }
+
+/**
+ * Single API for Pro entitlement checks. Reads the store snapshot, so it is
+ * non-reactive — prefer `useUserStore((s) => s.isPro)` inside React renders.
+ *
+ * Fail-closed by construction: `useUserStore` initialises `isPro` to false
+ * and `checkEntitlements` swallows network errors, so a failed entitlement
+ * fetch leaves the snapshot at false. Issue #34.
+ */
+export function isPro(): boolean {
+  return useUserStore.getState().isPro;
+}
