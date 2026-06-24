@@ -7,9 +7,50 @@
  */
 
 import type { PalmLine, PalmLineType } from '../contracts/palmAnalysis';
+import type { TokenUsage } from './pricing';
 
 interface DeepSeekResponse {
   choices?: Array<{ message?: { content?: string } }>;
+  usage?: {
+    prompt_tokens?: number;
+    completion_tokens?: number;
+    total_tokens?: number;
+  };
+}
+
+/** Single-line synthesis result, including token usage for cost tracking. */
+export interface SynthesizedLine {
+  reading: string;
+  /** Token usage as reported by DeepSeek for this line's call. */
+  usage: TokenUsage;
+}
+
+/** Aggregated synthesis result across every line in a reading. */
+export interface SynthesizedReading {
+  readings: Map<PalmLineType, string>;
+  /** Sum of token usage across all synthesis calls. */
+  usage: TokenUsage;
+}
+
+/** Empty usage — what we return when the provider omits the `usage` block. */
+const ZERO_USAGE: TokenUsage = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
+
+/** Parse the `usage` block from a DeepSeek response, defaulting missing fields to 0. */
+function parseUsage(raw: DeepSeekResponse['usage']): TokenUsage {
+  if (!raw) return { ...ZERO_USAGE };
+  const prompt = typeof raw.prompt_tokens === 'number' ? raw.prompt_tokens : 0;
+  const completion = typeof raw.completion_tokens === 'number' ? raw.completion_tokens : 0;
+  const total = typeof raw.total_tokens === 'number' ? raw.total_tokens : prompt + completion;
+  return { promptTokens: prompt, completionTokens: completion, totalTokens: total };
+}
+
+/** Accumulate two usage blocks into a new one (no in-place mutation). */
+function addUsage(a: TokenUsage, b: TokenUsage): TokenUsage {
+  return {
+    promptTokens: a.promptTokens + b.promptTokens,
+    completionTokens: a.completionTokens + b.completionTokens,
+    totalTokens: a.totalTokens + b.totalTokens,
+  };
 }
 
 /** Guard prefix injected before the system prompt to resist prompt injection attacks. */
@@ -76,7 +117,7 @@ export async function synthesizeReading(
   rawAnalysis: string,
   lineType: PalmLineType,
   apiKey: string
-): Promise<string> {
+): Promise<SynthesizedLine> {
   const response = await fetch('https://api.deepseek.com/chat/completions', {
     method: 'POST',
     headers: {
@@ -110,29 +151,39 @@ export async function synthesizeReading(
   }
 
   const data = await response.json() as DeepSeekResponse;
-  return data.choices?.[0]?.message?.content || rawAnalysis;
+  const reading = data.choices?.[0]?.message?.content || rawAnalysis;
+  // Capture token usage for cost accounting (issue #31). A missing `usage`
+  // block returns zeros — the route handler then falls back to the
+  // pre-#31 flat estimate rather than logging $0.
+  return { reading, usage: parseUsage(data.usage) };
 }
 
 const MAX_CONCURRENCY = 3;
 
 /**
  * Synthesize all lines in a reading, capped at MAX_CONCURRENCY parallel calls.
+ *
+ * Returns both the per-line synthesized text and the aggregate token usage
+ * across every line. Callers (issue #31) use the aggregated usage to compute
+ * the per-reading AI cost that lands in `readings.estimated_ai_cost`.
  */
 export async function synthesizeAllLines(
   lines: Pick<PalmLine, 'type' | 'rawAnalysis'>[],
   apiKey: string
-): Promise<Map<PalmLineType, string>> {
+): Promise<SynthesizedReading> {
   const results = new Map<PalmLineType, string>();
+  let totalUsage: TokenUsage = { ...ZERO_USAGE };
 
   // Process in batches to avoid overwhelming the DeepSeek API
   for (let i = 0; i < lines.length; i += MAX_CONCURRENCY) {
     const batch = lines.slice(i, i + MAX_CONCURRENCY);
     const batchPromises = batch.map(async (line) => {
-      const enhanced = await synthesizeReading(line.rawAnalysis, line.type, apiKey);
-      results.set(line.type, enhanced);
+      const { reading, usage } = await synthesizeReading(line.rawAnalysis, line.type, apiKey);
+      results.set(line.type, reading);
+      totalUsage = addUsage(totalUsage, usage);
     });
     await Promise.all(batchPromises);
   }
 
-  return results;
+  return { readings: results, usage: totalUsage };
 }
