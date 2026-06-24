@@ -118,7 +118,7 @@ export default function CompareScreen() {
       <Animated.View entering={FadeIn} style={styles.header}>
         <Text style={styles.title}>Palm Match 👯</Text>
         <Text style={styles.subtitle}>
-          Are you actually compatible? Let's find out
+          Are you actually compatible? Let&apos;s find out
         </Text>
       </Animated.View>
 

@@ -58,7 +58,7 @@ const INITIAL_STATE = {
   analyzeProgress: 0,
   error: null,
   readings: [],
-} as const;
+};
 
 // ---------------------------------------------------------------------------
 // Tests

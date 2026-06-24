@@ -170,7 +170,7 @@ export default function CaptureScreen() {
           testID="grant-camera-btn"
           accessibilityLabel="Grant camera permission"
         >
-          <Text style={styles.permissionBtnText}>Let's Go</Text>
+          <Text style={styles.permissionBtnText}>Let&apos;s Go</Text>
         </TouchableOpacity>
       </View>
     );

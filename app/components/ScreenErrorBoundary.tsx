@@ -42,7 +42,7 @@ export class ScreenErrorBoundary extends Component<Props, State> {
           <Text style={styles.emoji}>✨</Text>
           <Text style={styles.title}>Something glitched</Text>
           <Text style={styles.message}>
-            The stars aren't aligned right now. Let's try that again.
+            The stars aren&apos;t aligned right now. Let&apos;s try that again.
           </Text>
           <TouchableOpacity
             style={styles.button}

@@ -12,7 +12,7 @@ import { GlassCard } from '../components/GlassCard';
 import { Colors, Fonts, Spacing, BorderRadius } from '../constants/theme';
 import { useUserStore } from '../stores/userStore';
 import { restorePurchases } from '../services/revenue';
-import { Pricing } from '../constants/config';
+import { openSubscriptions } from '../services/deepLinks';
 
 function SettingsRow({ icon, label, onPress, testID }: { icon: string; label: string; onPress: () => void; testID: string }) {
   return (
@@ -36,7 +36,9 @@ export default function SettingsScreen() {
     } catch { Alert.alert('Error', 'Failed to restore. Try again.'); }
   };
 
-  const openSubscriptions = () => Linking.openURL('https://apps.apple.com/account/subscriptions');
+  const handleOpenSubscriptions = () => {
+    openSubscriptions();
+  };
   const openPrivacy = () => Linking.openURL('https://getpalmi.com/privacy');
   const openTerms = () => Linking.openURL('https://getpalmi.com/terms');
 
@@ -66,7 +68,7 @@ export default function SettingsScreen() {
         <GlassCard style={styles.section}>
           <Text style={styles.sectionTitle}>Account</Text>
           <SettingsRow icon="🔄" label="Restore Purchases" onPress={handleRestore} testID="restore-purchases-btn" />
-          {isPro && <SettingsRow icon="💳" label="Manage Subscription" onPress={openSubscriptions} testID="manage-sub-btn" />}
+          {isPro && <SettingsRow icon="💳" label="Manage Subscription" onPress={handleOpenSubscriptions} testID="manage-sub-btn" />}
         </GlassCard>
       </Animated.View>
 
