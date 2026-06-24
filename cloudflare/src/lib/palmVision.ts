@@ -1,7 +1,17 @@
 /**
  * Palm Vision — OpenAI GPT-5.4-mini vision integration
  * Analyzes palm photos and returns structured line data.
+ *
+ * The output shape is defined by the `PalmAnalysis` contract in
+ * `cloudflare/src/contracts/palmAnalysis.ts`, which is the single source of
+ * truth shared with the synthesis service.
  */
+
+import {
+  parsePalmAnalysis,
+  validatePalmAnalysis,
+  type PalmAnalysis,
+} from '../contracts/palmAnalysis';
 
 interface OpenAIVisionResponse {
   choices?: Array<{
@@ -9,31 +19,6 @@ interface OpenAIVisionResponse {
       content?: string;
     };
   }>;
-}
-
-interface RawPalmLine {
-  type?: string;
-  label?: string;
-  strength?: number;
-  archetype?: string;
-  emoji?: string;
-  shortSummary?: string;
-  rawAnalysis?: string;
-}
-
-interface PalmAnalysisResult {
-  lines: Array<{
-    type: 'heart' | 'head' | 'life' | 'fate';
-    label: string;
-    strength: number;
-    archetype: string;
-    emoji: string;
-    shortSummary: string;
-    rawAnalysis: string;
-  }>;
-  overallArchetype: string;
-  overallArchetypeEmoji: string;
-  overallSummary: string;
 }
 
 const SYSTEM_PROMPT = `You are Palmi, a mystical palm reading AI with a warm, sharp, Gen-Z-friendly voice. Analyze the palm in the image and return a structured JSON response.
@@ -65,7 +50,7 @@ Rules:
 export async function analyzePalm(
   imageBase64: string,
   apiKey: string
-): Promise<PalmAnalysisResult> {
+): Promise<PalmAnalysis> {
   const response = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: {
@@ -116,24 +101,20 @@ export async function analyzePalm(
     parsed.lines = parsed.visibleLines;
     delete parsed.visibleLines;
   }
-  if (!Array.isArray(parsed.lines)) {
-    throw new Error(`AI response missing lines array. Raw: ${content.slice(0, 300)}`);
+
+  // Validate against the PalmAnalysis contract before returning. The parser
+  // applies the same normalization the legacy code path did (defaults for
+  // missing fields, clamping for out-of-range strength) so callers keep the
+  // existing shape guarantees.
+  const validation = validatePalmAnalysis(parsed);
+  if (!validation.valid) {
+    console.warn(`PalmAnalysis contract violations: ${validation.errors.join('; ')}`);
   }
 
-  const normalizedLines: PalmAnalysisResult['lines'] = parsed.lines.map((line: RawPalmLine) => ({
-    type: (line.type || 'life') as 'heart' | 'head' | 'life' | 'fate',
-    label: line.label || 'Palm Line',
-    strength: typeof line.strength === 'number' ? line.strength : 50,
-    archetype: line.archetype || 'The Mystery',
-    emoji: line.emoji || '🔮',
-    shortSummary: line.shortSummary || 'Your palm tells a story.',
-    rawAnalysis: line.rawAnalysis || 'Analysis unavailable.',
-  }));
-
-  return {
-    lines: normalizedLines,
-    overallArchetype: parsed.overallArchetype as string || 'The Mystery',
-    overallArchetypeEmoji: parsed.overallArchetypeEmoji as string || '🔮',
-    overallSummary: parsed.overallSummary as string || '',
-  };
+  try {
+    return parsePalmAnalysis(parsed);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : 'parse failed';
+    throw new Error(`AI response did not match PalmAnalysis contract: ${msg}. Raw: ${content.slice(0, 300)}`);
+  }
 }

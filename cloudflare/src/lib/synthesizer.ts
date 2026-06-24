@@ -2,7 +2,11 @@
  * Synthesizer — DeepSeek V4 Flash text generation
  * Transforms raw palm analysis into engaging Gen-Z voice readings.
  * OpenAI-compatible API at api.deepseek.com.
+ *
+ * Consumes the `PalmAnalysis` contract from `cloudflare/src/contracts/palmAnalysis.ts`.
  */
+
+import type { PalmLine, PalmLineType } from '../contracts/palmAnalysis';
 
 interface DeepSeekResponse {
   choices?: Array<{ message?: { content?: string } }>;
@@ -70,7 +74,7 @@ Format: Return the enhanced reading as a plain text string (no JSON, no markdown
 
 export async function synthesizeReading(
   rawAnalysis: string,
-  lineType: string,
+  lineType: PalmLineType,
   apiKey: string
 ): Promise<string> {
   const response = await fetch('https://api.deepseek.com/chat/completions', {
@@ -109,10 +113,10 @@ const MAX_CONCURRENCY = 3;
  * Synthesize all lines in a reading, capped at MAX_CONCURRENCY parallel calls.
  */
 export async function synthesizeAllLines(
-  lines: Array<{ type: string; rawAnalysis: string }>,
+  lines: Pick<PalmLine, 'type' | 'rawAnalysis'>[],
   apiKey: string
-): Promise<Map<string, string>> {
-  const results = new Map<string, string>();
+): Promise<Map<PalmLineType, string>> {
+  const results = new Map<PalmLineType, string>();
 
   // Process in batches to avoid overwhelming the DeepSeek API
   for (let i = 0; i < lines.length; i += MAX_CONCURRENCY) {
