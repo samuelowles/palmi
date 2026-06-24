@@ -7,7 +7,8 @@
 import React, { useState, useEffect } from 'react';
 import { StyleSheet, View, Text, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
-import Animated, { FadeIn, FadeInDown, FadeInUp } from 'react-native-reanimated';
+import Animated, { FadeIn, FadeInDown, FadeInUp, SlideInUp } from 'react-native-reanimated';
+import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';
 import { GlassCard } from '../components/GlassCard';
 import { Colors, Fonts, Spacing, BorderRadius, Shadows } from '../constants/theme';
@@ -94,8 +95,11 @@ export default function PaywallScreen() {
         ))}
       </Animated.View>
 
-      {/* Pricing card */}
-      <Animated.View entering={FadeInUp.delay(800)}>
+      {/* Pricing card with parallax blur backdrop + slide-up entrance */}
+      <Animated.View entering={SlideInUp.delay(600).springify().damping(18)} style={styles.priceWrap}>
+        <Animated.View entering={FadeIn.delay(400)} style={styles.parallaxBlur} pointerEvents="none">
+          <BlurView intensity={50} tint="dark" style={StyleSheet.absoluteFill} />
+        </Animated.View>
         <GlassCard glowing style={styles.priceCard} testID="price-card">
           <Text style={styles.priceLabel}>PALMI PRO</Text>
           <Text style={styles.price}>{Pricing.weeklyPrice}<Text style={styles.pricePer}>/week</Text></Text>
@@ -136,6 +140,17 @@ const styles = StyleSheet.create({
   featureTitle: { fontFamily: Fonts.ui.semiBold, fontSize: Fonts.sizes.body, color: Colors.textPrimary },
   featureDesc: { fontFamily: Fonts.ui.regular, fontSize: Fonts.sizes.caption, color: Colors.textSecondary },
   priceCard: { alignItems: 'center', marginBottom: Spacing.xl },
+  priceWrap: { position: 'relative' },
+  parallaxBlur: {
+    position: 'absolute',
+    top: -Spacing.xl,
+    left: -Spacing.xl,
+    right: -Spacing.xl,
+    bottom: -Spacing.xl,
+    borderRadius: BorderRadius.lg + Spacing.sm,
+    overflow: 'hidden',
+    zIndex: -1,
+  },
   priceLabel: { fontFamily: Fonts.ui.medium, fontSize: Fonts.sizes.caption, color: Colors.textAccent, letterSpacing: 2, textTransform: 'uppercase', marginBottom: Spacing.sm },
   price: { fontFamily: Fonts.ui.bold, fontSize: Fonts.sizes.hero, color: Colors.textPrimary },
   pricePer: { fontFamily: Fonts.ui.regular, fontSize: Fonts.sizes.subtitle, color: Colors.textSecondary },
