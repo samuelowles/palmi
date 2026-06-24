@@ -3,7 +3,7 @@
  * Parses friend share links, fetches readings, and displays real synergy results.
  */
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   StyleSheet,
   View,
@@ -22,6 +22,7 @@ import { GlassCard } from '../components/GlassCard';
 import { CompatibilityCard } from '../components/CompatibilityCard';
 import { Colors, Fonts, Spacing, BorderRadius, Shadows } from '../constants/theme';
 import { useReadingStore } from '../stores/readingStore';
+import { useUserStore } from '../stores/userStore';
 import { Config } from '../constants/config';
 import { comparePalms, getReading, SynergyResult } from '../services/api';
 
@@ -41,8 +42,17 @@ type ScreenState =
 export default function CompareScreen() {
   const router = useRouter();
   const { currentReading } = useReadingStore();
+  const { isPro } = useUserStore();
   const [friendLink, setFriendLink] = useState('');
   const [state, setState] = useState<ScreenState>({ phase: 'input' });
+
+  // Entitlement gate: non-Pro users are redirected to the paywall.
+  // Mirrors the gate in reading.tsx so deep links / stale state can't bypass.
+  useEffect(() => {
+    if (!isPro) {
+      router.replace('/paywall');
+    }
+  }, [isPro, router]);
 
   const myReadingId = currentReading?.id;
   const shareLink = myReadingId
