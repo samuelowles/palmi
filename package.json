@@ -1,0 +1,6 @@
+{
+  "private": true,
+  "scripts": {
+    "build": "node -e \"const fs=require('fs'),cp=require('child_process');if(!fs.existsSync('cloudflare/node_modules/typescript/bin/tsc'))cp.execSync('npm --prefix cloudflare ci',{stdio:'inherit'});cp.execSync('npm --prefix cloudflare run build',{stdio:'inherit'})\""
+  }
+}
