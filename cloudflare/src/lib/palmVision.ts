@@ -26,6 +26,27 @@ interface OpenAIVisionResponse {
   }>;
 }
 
+/**
+ * Typed error thrown by {@link analyzePalm}.
+ *
+ * `code` discriminates the failure mode so callers (e.g. the route handler)
+ * can map it to the right user-facing message without parsing English prose,
+ * and so the message string itself never needs to embed raw vendor data
+ * (request/response bodies, image bytes, API keys).
+ */
+export class PalmVisionError extends Error {
+  readonly code: 'upstream_unavailable' | 'invalid_response' | 'no_content';
+
+  constructor(
+    code: 'upstream_unavailable' | 'invalid_response' | 'no_content',
+    message: string,
+  ) {
+    super(message);
+    this.name = 'PalmVisionError';
+    this.code = code;
+  }
+}
+
 export async function analyzePalm(
   imageBase64: string,
   apiKey: string
@@ -61,16 +82,20 @@ export async function analyzePalm(
   });
 
   if (!response.ok) {
-    const errorText = await response.text();
-    console.error(`OpenAI API error ${response.status}: ${errorText.slice(0, 200)}`);
-    throw new Error('Analysis service unavailable');
+    // Consume the body so the connection can be reused, but do not log or
+    // embed it — it can echo back parts of our request (Authorization header,
+    // base64 image payload, request id) which would leak secrets/raw image
+    // bytes. The status code is enough for ops triage.
+    await response.text();
+    console.error(`OpenAI API returned ${response.status}`);
+    throw new PalmVisionError('upstream_unavailable', 'Analysis service unavailable');
   }
 
   const data = await response.json() as OpenAIVisionResponse;
   const content = data.choices?.[0]?.message?.content;
 
   if (!content) {
-    throw new Error('No content in OpenAI response');
+    throw new PalmVisionError('no_content', 'No content in OpenAI response');
   }
 
   const parsed = JSON.parse(content) as Record<string, unknown>;
@@ -93,7 +118,12 @@ export async function analyzePalm(
   try {
     return parsePalmAnalysis(parsed);
   } catch (err) {
+    // The parse error is propagated as a typed PalmVisionError. We deliberately
+    // do NOT include the raw model output (`content`) in the message — the
+    // route handler logs the error message via `console.error` and may forward
+    // it to the user, so embedding the vendor response body would leak
+    // AI-generated text we never want to persist or expose.
     const msg = err instanceof Error ? err.message : 'parse failed';
-    throw new Error(`AI response did not match PalmAnalysis contract: ${msg}. Raw: ${content.slice(0, 300)}`);
+    throw new PalmVisionError('invalid_response', `AI response did not match PalmAnalysis contract: ${msg}`);
   }
 }
