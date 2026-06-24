@@ -17,6 +17,7 @@ import {
   type PalmAnalysis,
 } from '../contracts/palmAnalysis';
 import SYSTEM_PROMPT from '../prompts/palmVision.md?raw';
+import type { TokenUsage } from './pricing';
 
 interface OpenAIVisionResponse {
   choices?: Array<{
@@ -24,6 +25,18 @@ interface OpenAIVisionResponse {
       content?: string;
     };
   }>;
+  usage?: {
+    prompt_tokens?: number;
+    completion_tokens?: number;
+    total_tokens?: number;
+  };
+}
+
+/** Result envelope from {@link analyzePalm}. */
+export interface PalmVisionResult {
+  analysis: PalmAnalysis;
+  /** Token usage as reported by the OpenAI API. `null` when missing. */
+  usage: TokenUsage | null;
 }
 
 /**
@@ -50,7 +63,7 @@ export class PalmVisionError extends Error {
 export async function analyzePalm(
   imageBase64: string,
   apiKey: string
-): Promise<PalmAnalysis> {
+): Promise<PalmVisionResult> {
   const response = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: {
@@ -115,8 +128,21 @@ export async function analyzePalm(
     console.warn(`PalmAnalysis contract violations: ${validation.errors.join('; ')}`);
   }
 
+  // Capture token usage for cost accounting (issue #31). Only forward when
+  // the provider actually reports it — `null` triggers the pricing fallback.
+  const usage: TokenUsage | null = data.usage
+    ? {
+        promptTokens: typeof data.usage.prompt_tokens === 'number' ? data.usage.prompt_tokens : 0,
+        completionTokens: typeof data.usage.completion_tokens === 'number' ? data.usage.completion_tokens : 0,
+        totalTokens: typeof data.usage.total_tokens === 'number'
+          ? data.usage.total_tokens
+          : (typeof data.usage.prompt_tokens === 'number' ? data.usage.prompt_tokens : 0) +
+            (typeof data.usage.completion_tokens === 'number' ? data.usage.completion_tokens : 0),
+      }
+    : null;
+
   try {
-    return parsePalmAnalysis(parsed);
+    return { analysis: parsePalmAnalysis(parsed), usage };
   } catch (err) {
     // The parse error is propagated as a typed PalmVisionError. We deliberately
     // do NOT include the raw model output (`content`) in the message — the

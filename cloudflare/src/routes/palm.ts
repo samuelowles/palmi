@@ -9,6 +9,11 @@ import type { Env } from '../index';
 import { analyzePalm } from '../lib/palmVision';
 import { synthesizeAllLines } from '../lib/synthesizer';
 import { rateLimit } from '../lib/rateLimiter';
+import {
+  computeReadingCostUsd,
+  FALLBACK_READING_COST_USD,
+  type TokenUsage,
+} from '../lib/pricing';
 
 /** Turnstile verification helper */
 async function verifyTurnstile(token: string, secret: string): Promise<boolean> {
@@ -99,10 +104,10 @@ palmRoute.post('/read-palm', async (c) => {
     const isPro = userResult?.is_pro === 1;
 
     // Step 1: Analyze palm with GPT-5.4-mini
-    const analysis = await analyzePalm(imageBase64, c.env.OPENAI_API_KEY);
+    const { analysis, usage: visionUsage } = await analyzePalm(imageBase64, c.env.OPENAI_API_KEY);
 
     // Step 2: Synthesize readings with DeepSeek
-    const synthesized = await synthesizeAllLines(
+    const { readings: synthesized, usage: synthesisUsage } = await synthesizeAllLines(
       analysis.lines.map((l) => ({ type: l.type, rawAnalysis: l.rawAnalysis })),
       c.env.DEEPSEEK_API_KEY
     );
@@ -133,8 +138,27 @@ palmRoute.post('/read-palm', async (c) => {
       createdAt: now,
     };
 
-    // Step 4: Store full reading in D1 (all content, regardless of pro status)
-    const estimatedCost = 0.00248;
+    // Step 4: Compute per-reading AI cost from real token usage (issue #31).
+    //
+    // AC "Cost computed from token usage (vision + synthesis) using current
+    // model pricing" → pricing lives in lib/pricing.ts.
+    //
+    // AC "Non-blocking: cost write failure does not break the user response"
+    // → wrap the computation in try/catch. A NaN/throw from a malformed usage
+    // payload falls back to the pre-#31 flat estimate instead of taking the
+    // route down. The INSERT itself can still fail and propagate; that is the
+    // pre-existing storage error path, unchanged.
+    let estimatedCost: number;
+    try {
+      estimatedCost = computeReadingCostUsd(
+        visionUsage as TokenUsage | null,
+        synthesisUsage as TokenUsage | null,
+      );
+    } catch {
+      estimatedCost = FALLBACK_READING_COST_USD;
+    }
+
+    // Step 5: Store full reading in D1 (all content, regardless of pro status)
     await c.env.DB.prepare(
       `INSERT INTO readings (id, user_id, data, estimated_ai_cost, created_at) VALUES (?, ?, ?, ?, ?)`
     )
