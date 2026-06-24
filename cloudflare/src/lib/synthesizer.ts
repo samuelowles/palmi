@@ -98,8 +98,14 @@ export async function synthesizeReading(
   });
 
   if (!response.ok) {
-    const errorText = await response.text();
-    console.error(`DeepSeek API error ${response.status}: ${errorText.slice(0, 200)}`);
+    // Consume the body so the connection can be reused, but never log or
+    // embed it — DeepSeek error bodies can echo back parts of our request
+    // (Authorization header, request body) which would leak the API key
+    // and the prompt payload. The status code is enough for ops triage.
+    // See acceptance criterion for issue #30: never log raw vendor
+    // response bodies.
+    await response.text();
+    console.error(`DeepSeek API returned ${response.status}`);
     throw new Error('Synthesis service unavailable');
   }
 
