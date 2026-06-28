@@ -119,6 +119,12 @@ export function rateLimit(options: {
     });
 
     if (limited) {
+      // Retry-After hint per RFC 7231 §7.1.3 (delta-seconds). Use the full
+      // window length so the client can safely retry once the current
+      // bucket has rolled over — issue #97 acceptance #2. We deliberately
+      // do NOT include the windowKey / limitKey / bucket number so internal
+      // KV layout cannot leak (acceptance #3).
+      c.header('Retry-After', String(options.windowSeconds));
       return c.json(
         { error: 'Too many requests. Please slow down.', code: 'rate_limited' },
         429,

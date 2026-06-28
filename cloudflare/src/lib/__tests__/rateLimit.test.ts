@@ -116,6 +116,36 @@ describe('rateLimit middleware — 5/60 boundary', () => {
     expect(sixth.status).toBe(429);
   });
 
+  // Issue #97 acceptance #2 — Retry-After hint, and #3 — no internal KV
+  // key details leak in the 429 body or headers.
+  it('includes a Retry-After hint and never leaks KV key details on 429', async () => {
+    const kv = createMockKV() as unknown as KVNamespace;
+    const env: TestEnv = { KV: kv };
+    const app = buildApp(200);
+
+    for (let i = 1; i <= 5; i++) {
+      await postReadPalm(app, env, '5.5.5.5');
+    }
+    const sixth = await postReadPalm(app, env, '5.5.5.5');
+    expect(sixth.status).toBe(429);
+
+    // Retry-After must be present and a positive integer of seconds.
+    const retryAfter = sixth.headers.get('Retry-After');
+    expect(retryAfter, 'Retry-After header is required').not.toBeNull();
+    expect(Number.isFinite(Number(retryAfter))).toBe(true);
+    expect(Number(retryAfter)).toBeGreaterThan(0);
+
+    // The body must not expose any KV key shape (`ratelimit:...:...`).
+    const bodyText = await sixth.text();
+    expect(bodyText).not.toMatch(/ratelimit:/);
+    expect(bodyText).not.toMatch(/5\.5\.5\.5:\d+/);
+    // Standard 429 envelope fields only.
+    const body = JSON.parse(bodyText) as { code?: string; error?: string };
+    expect(body.code).toBe('rate_limited');
+    expect(typeof body.error).toBe('string');
+    expect(Object.keys(body).sort()).toEqual(['code', 'error']);
+  });
+
   it('tracks each request independently — different IPs get separate budgets', async () => {
     const kv = createMockKV() as unknown as KVNamespace;
     const env: TestEnv = { KV: kv };
