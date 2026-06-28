@@ -11,7 +11,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import SYSTEM_PROMPT from '../../prompts/synthesis.md?raw';
+import SYSTEM_PROMPT from '../../prompts/synthesis.md';
 
 describe('synthesis system prompt (issue #29)', () => {
   it('is loaded as a non-empty string at build time', () => {
