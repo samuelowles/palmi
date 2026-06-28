@@ -7,8 +7,10 @@
  * truth shared with the synthesis service.
  *
  * The system prompt lives in `cloudflare/src/prompts/palmVision.md` and is
- * loaded at build time via the `?raw` import suffix (no runtime FS access
- * needed in the Worker). See issue #27.
+ * bundled at build time as a UTF-8 string export by wrangler's
+ * `[[rules]] type = "Text"` block in `cloudflare/wrangler.toml`
+ * (issue #191). No runtime FS access needed in the Worker.
+ * See issue #27.
  */
 
 import {
@@ -16,7 +18,7 @@ import {
   validatePalmAnalysis,
   type PalmAnalysis,
 } from '../contracts/palmAnalysis';
-import SYSTEM_PROMPT from '../prompts/palmVision.md?raw';
+import SYSTEM_PROMPT from '../prompts/palmVision.md';
 import type { TokenUsage } from './pricing';
 
 interface OpenAIVisionResponse {

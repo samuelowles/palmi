@@ -9,7 +9,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import SYSTEM_PROMPT from '../../prompts/palmVision.md?raw';
+import SYSTEM_PROMPT from '../../prompts/palmVision.md';
 
 describe('palm-vision system prompt (issue #27)', () => {
   it('is loaded as a non-empty string at build time', () => {
