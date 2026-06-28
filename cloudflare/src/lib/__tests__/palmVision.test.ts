@@ -136,3 +136,67 @@ describe('analyzePalm — abort mapping (issue #98)', () => {
     expect(result.analysis.lines[0].type).toBe('heart');
   });
 });
+
+// ---------------------------------------------------------------------------
+// Refusal → typed error + server-side log (issue #99)
+// ---------------------------------------------------------------------------
+
+describe('analyzePalm — refusal mapping (issue #99)', () => {
+  let originalFetch: typeof fetch;
+  let fetchMock: ReturnType<typeof vi.fn>;
+  let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    originalFetch = globalThis.fetch;
+    fetchMock = vi.fn();
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+    consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+    consoleErrorSpy.mockRestore();
+  });
+
+  it('throws PalmVisionError("refusal") and logs the original refusal reason server-side, without leaking it in the thrown message', async () => {
+    // Issue #99: the route maps the typed `refusal` code to 422 +
+    // code:vision_refusal and emits a generic client message. The
+    // original refusal reason must reach console.error for ops triage,
+    // but it must NOT be embedded in the thrown error — the route logs
+    // the error message via console.error and the privacy boundary
+    // forbids forwarding the refusal text to the client.
+    const REFUSAL_CANARY = 'REFUSAL_CANARY_POLICY_LEAK_99';
+    fetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          choices: [
+            {
+              message: {
+                refusal: REFUSAL_CANARY,
+              },
+            },
+          ],
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ),
+    );
+
+    let pve: PalmVisionError | undefined;
+    try {
+      await analyzePalm('irrelevant-base64', 'sk-test-1234', 10_000);
+    } catch (err) {
+      expect(err).toBeInstanceOf(PalmVisionError);
+      pve = err as PalmVisionError;
+    }
+    expect(pve).toBeDefined();
+    expect(pve!.code).toBe('refusal');
+    // The thrown message must stay generic — never include the refusal
+    // text. The route handler logs the message via console.error and
+    // may surface parts of it in error envelopes.
+    expect(pve!.message).not.toContain(REFUSAL_CANARY);
+    // The original refusal reason must be logged for ops triage.
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      expect.stringContaining(REFUSAL_CANARY),
+    );
+  });
+});

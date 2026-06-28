@@ -143,11 +143,18 @@ export async function analyzePalm(
   const refusal = data.choices?.[0]?.message?.refusal;
 
   // Model declined to analyze the image — typically a content-policy
-  // refusal. Issue #89 surfaces this as a 422 to the client. We must NOT
-  // include the refusal text in the thrown message: the route handler logs
-  // error messages via `console.error`, and the refusal string can hint at
-  // vendor-side classification rules we don't want to surface.
+  // refusal. Issue #89 surfaces this as a 422 to the client. Issue #99
+  // requires the original refusal reason to be logged server-side for
+  // ops triage, but it must NEVER reach the client response: the refusal
+  // string can hint at vendor-side classification rules we don't want
+  // to expose. The thrown error keeps a generic message; the original
+  // text is truncated to keep the log line bounded.
   if (refusal) {
+    // Cap the logged reason at 500 chars — vendor refusal text is
+    // short, but a generous cap protects against accidental log spam
+    // without losing the ops-triage signal.
+    const loggedRefusal = refusal.length > 500 ? `${refusal.slice(0, 500)}…` : refusal;
+    console.error(`OpenAI vision refused to analyze image: ${loggedRefusal}`);
     throw new PalmVisionError('refusal', 'Image could not be analyzed');
   }
 
