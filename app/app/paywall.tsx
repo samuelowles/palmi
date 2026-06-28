@@ -6,7 +6,8 @@
 
 import React, { useState, useEffect } from 'react';
 import { StyleSheet, View, Text, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
+import { paywallCopyFor } from './paywallCopy';
 import Animated, { FadeIn, FadeInDown, FadeInUp, SlideInUp } from 'react-native-reanimated';
 import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';
@@ -26,6 +27,9 @@ const FEATURES = [
 
 export default function PaywallScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams<{ source?: string | string[] }>();
+  const rawSource = Array.isArray(params.source) ? params.source[0] : params.source;
+  const headerCopy = paywallCopyFor(rawSource);
   const { isPro } = useUserStore();
   const [isLoading, setIsLoading] = useState(false);
   const [isRestoring, setIsRestoring] = useState(false);
@@ -78,8 +82,8 @@ export default function PaywallScreen() {
       {/* Header */}
       <Animated.View entering={FadeIn.delay(100)} style={styles.header}>
         <Text style={styles.emoji}>🔮</Text>
-        <Text style={styles.title}>Your Life Line Has Something to Say</Text>
-        <Text style={styles.subtitle}>Most people are scared to see this part</Text>
+        <Text style={styles.title}>{headerCopy.title}</Text>
+        <Text style={styles.subtitle}>{headerCopy.subtitle}</Text>
       </Animated.View>
 
       {/* Feature list */}
