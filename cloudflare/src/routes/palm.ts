@@ -39,13 +39,22 @@ const PREMIUM_LINE_TYPES: ReadonlySet<string> = new Set(['life', 'fate']);
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 
 /**
+ * Minimum decoded image size in bytes. Issue #96 cheap heuristic for
+ * "non-palm content" — anything smaller cannot plausibly be a real palm
+ * photo (the smallest valid 1×1 PNG decodes to ~68 bytes, a real compressed
+ * palm photo is several KB). Sits below the test fixture's 1×1 PNG so
+ * existing fixtures still flow through the AI path.
+ */
+const MIN_IMAGE_BYTES = 64;
+
+/**
  * Typed error codes for the palm-reading endpoint. Issued under #89 so
  * clients can pattern-match on `code` instead of string-matching the
  * human-readable `error` field. Keep this list closed — every public
  * failure path on this route must surface a code from this union.
  */
 type PalmErrorCode =
-  | 'invalid_image'            // 400 — missing/empty imageBase64
+  | 'invalid_image'            // 400 — missing/empty/decode-fail/below-min imageBase64
   | 'image_too_large'          // 400 — decoded base64 > MAX_IMAGE_BYTES
   | 'invalid_user'             // 400 — missing/malformed userId
   | 'bot_check_required'       // 403 — Turnstile token missing
@@ -67,11 +76,22 @@ palmRoute.post('/read-palm', async (c) => {
       return c.json({ error: 'Request body too large', code: 'image_too_large' }, 413);
     }
 
-    const { imageBase64, userId, turnstileToken } = await c.req.json<{
-      imageBase64: string;
-      userId: string;
-      turnstileToken?: string;
-    }>();
+    // Parse body — empty / non-JSON must surface as 400, not 500 (issue #96).
+    let imageBase64: string | undefined;
+    let userId: string | undefined;
+    let turnstileToken: string | undefined;
+    try {
+      const body = await c.req.json<{
+        imageBase64?: string;
+        userId?: string;
+        turnstileToken?: string;
+      }>();
+      imageBase64 = body.imageBase64;
+      userId = body.userId;
+      turnstileToken = body.turnstileToken;
+    } catch {
+      return c.json({ error: 'Invalid request body.', code: 'invalid_image' }, 400);
+    }
 
     // Grace period: accept JWT userId or legacy body userId
     const authUserId = c.get('userId');
@@ -103,9 +123,23 @@ palmRoute.post('/read-palm', async (c) => {
       }
     }
 
-    // Enforce image size limit before any AI call
-    // atob decodes base64 to a binary string — each char is one byte
-    const decodedSize = atob(imageBase64).length;
+    // Enforce image size limit before any AI call.
+    // `atob` decodes base64 to a binary string — each char is one byte.
+    // Issue #96: malformed base64 throws here; an empty / near-empty
+    // decoded payload is almost certainly not a palm photo. Both must
+    // surface as 400 with code `invalid_image`, not 500.
+    let decodedSize: number;
+    try {
+      decodedSize = atob(imageBase64).length;
+    } catch {
+      return c.json({ error: 'Image data is unreadable.', code: 'invalid_image' }, 400);
+    }
+    if (decodedSize < MIN_IMAGE_BYTES) {
+      return c.json(
+        { error: 'Image too small. Try a clearer palm photo in good lighting.', code: 'invalid_image' },
+        400,
+      );
+    }
     if (decodedSize > MAX_IMAGE_BYTES) {
       return c.json({ error: 'Image too large. Maximum 5 MB.', code: 'image_too_large' }, 400);
     }
