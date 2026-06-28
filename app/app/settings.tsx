@@ -13,6 +13,7 @@ import { Colors, Fonts, Spacing, BorderRadius } from '../constants/theme';
 import { useUserStore } from '../stores/userStore';
 import { restorePurchases } from '../services/revenue';
 import { openSubscriptions } from '../services/deepLinks';
+import { PAYWALL_ROUTE } from './paywallSource';
 
 function SettingsRow({ icon, label, onPress, testID }: { icon: string; label: string; onPress: () => void; testID: string }) {
   return (
@@ -67,6 +68,18 @@ export default function SettingsScreen() {
           <Text style={styles.sectionTitle}>Account</Text>
           <SettingsRow icon="🔄" label="Restore Purchases" onPress={handleRestore} testID="restore-purchases-btn" />
           {isPro && <SettingsRow icon="💳" label="Manage Subscription" onPress={openSubscriptionsHandler} testID="manage-sub-btn" />}
+        </GlassCard>
+      </Animated.View>
+
+      <Animated.View entering={FadeInDown.delay(250)}>
+        <GlassCard style={styles.section}>
+          <Text style={styles.sectionTitle}>My Readings</Text>
+          <SettingsRow
+            icon="📖"
+            label="Past Readings"
+            onPress={() => router.push(isPro ? '/reading' : PAYWALL_ROUTE.history)}
+            testID="past-readings-btn"
+          />
         </GlassCard>
       </Animated.View>
 

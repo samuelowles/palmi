@@ -14,6 +14,7 @@ import { BlurOverlay } from '../components/BlurOverlay';
 import { Colors, Fonts, Spacing, BorderRadius, Animation } from '../constants/theme';
 import { useReadingStore, PalmLine } from '../stores/readingStore';
 import { useUserStore } from '../stores/userStore';
+import { PAYWALL_ROUTE } from './paywallSource';
 
 function LineCard({ line, index, isPro, onUnlock }: { line: PalmLine; index: number; isPro: boolean; onUnlock: () => void }) {
   const isLocked = line.isPremium && !isPro;
@@ -33,7 +34,7 @@ function LineCard({ line, index, isPro, onUnlock }: { line: PalmLine; index: num
         <Text style={styles.shortSummary}>{line.shortSummary}</Text>
         <View style={{ position: 'relative', minHeight: 80 }}>
           <Text style={[styles.fullReading, isLocked && { opacity: 0.15 }]}>{line.fullReading}</Text>
-          {isLocked && <BlurOverlay onUnlock={onUnlock} />}
+          {isLocked && <BlurOverlay title="Unlock your Life Line" onUnlock={onUnlock} />}
         </View>
       </GlassCard>
     </Animated.View>
@@ -52,12 +53,12 @@ export default function ReadingScreen() {
     return currentReading?.lines ?? [];
   }, [currentReading]);
 
-  const handleUnlock = () => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); router.push('/paywall'); };
+  const handleUnlock = () => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); router.push(PAYWALL_ROUTE.lifeLine); };
   const handleShare = async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     await Share.share({ message: `${currentReading?.archetypeEmoji} apparently i'm "${currentReading?.archetype}" — what are you?\n\nscan your palm free: getpalmi.com` }).catch(() => {});
   };
-  const handleCompare = () => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); router.push(isPro ? '/compare' : '/paywall'); };
+  const handleCompare = () => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); router.push(isPro ? '/compare' : PAYWALL_ROUTE.compare); };
 
   if (!currentReading) return (
     <View style={styles.container}><Text style={styles.errorText}>No reading found</Text>
