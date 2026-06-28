@@ -192,6 +192,54 @@ describe('POST /api/read-palm - 400 typed error envelope (issue #89)', () => {
     const body = (await res.json()) as { code: string };
     expect(body.code).toBe('image_too_large');
   });
+
+  // -----------------------------------------------------------------------
+  // Issue #96 — reject unreadable images at the API boundary.
+  // The three new paths share the existing `invalid_image` code (#89);
+  // only the message changes so the client can prompt the user differently.
+  // -----------------------------------------------------------------------
+
+  it('returns 400 + code:invalid_image when the request body is empty (issue #96)', async () => {
+    const app = buildApp();
+    // `undefined` body → Request body is null → c.req.json() throws.
+    // Must surface as 400, not 500.
+    const res = await postReadPalm(app, makeEnv(), undefined);
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error: string; code: string };
+    expect(body.code).toBe('invalid_image');
+    expect(body.error.length).toBeGreaterThan(0);
+  });
+
+  it('returns 400 + code:invalid_image when base64 decode fails (issue #96)', async () => {
+    const app = buildApp();
+    // '@' is not in the base64 alphabet; atob throws InvalidCharacterError.
+    // Without the try/catch around atob this would fall through to 500.
+    const res = await postReadPalm(app, makeEnv(), {
+      imageBase64: '@@@@',
+      userId: 'u-1',
+    });
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { code: string; error: string };
+    expect(body.code).toBe('invalid_image');
+    // Must not leak the raw atob error message.
+    expect(body.error).not.toMatch(/InvalidCharacter/);
+    expect(body.error).not.toMatch(/atob/i);
+  });
+
+  it('returns 400 + code:invalid_image when decoded image is below the minimum-size heuristic (issue #96)', async () => {
+    const app = buildApp();
+    // 'AAAA' decodes to 3 zero bytes — well below MIN_IMAGE_BYTES (64).
+    // The heuristic catches payloads that cannot plausibly be a real palm photo.
+    const res = await postReadPalm(app, makeEnv(), {
+      imageBase64: 'AAAA',
+      userId: 'u-1',
+    });
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { code: string; error: string };
+    expect(body.code).toBe('invalid_image');
+    // The message should hint at a clearer photo, not a server-side error.
+    expect(body.error.toLowerCase()).toMatch(/image|photo|lighting/);
+  });
 });
 
 // ---------------------------------------------------------------------------
