@@ -119,7 +119,10 @@ export function rateLimit(options: {
     });
 
     if (limited) {
-      return c.json({ error: 'Too many requests. Please slow down.' }, 429);
+      return c.json(
+        { error: 'Too many requests. Please slow down.', code: 'rate_limited' },
+        429,
+      );
     }
 
     // Run downstream handler, then refund the budget slot if the response
