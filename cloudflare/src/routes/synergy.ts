@@ -2,6 +2,8 @@
  * Synergy Route — POST /api/synergy
  * Compares two palm readings and returns compatibility result.
  * Requires at least one of the two readings to belong to the requesting user.
+ * Bestie Compare is a Pro feature — issue #36 verifies the requester has the
+ * `pro` entitlement before any comparison work runs.
  */
 
 import { Hono } from 'hono';
@@ -12,6 +14,11 @@ import { rateLimit } from '../lib/rateLimiter';
 export const synergyRoute = new Hono<{ Bindings: Env }>();
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// Issue #36 — share the cache key prefix + TTL with reading.ts (issue #35) so
+// the two pro-gated routes read the same freshness window for `users.is_pro`.
+const ENTITLEMENT_CACHE_TTL_SECONDS = 60;
+const ENTITLEMENT_CACHE_KEY_PREFIX = 'entitlement:';
 
 // Rate limit: 5 synergy comparisons per minute per client (PRD §5.2 / issue #16)
 synergyRoute.use('/synergy', rateLimit({ maxRequests: 5, windowSeconds: 60 }));
@@ -38,6 +45,44 @@ synergyRoute.post('/synergy', async (c) => {
     if (!authUserId && userId) {
       console.warn(`[Deprecated] Legacy userId auth for user ${userId}`);
       c.header('X-Auth-Warning', 'deprecated');
+    }
+
+    // Issue #36 — server-side pro entitlement check. Bestie Compare is a
+    // Pro-only feature (PRD §3.3, §4); free users must hit the paywall,
+    // not get a silent 200. Mirrors reading.ts (#35): KV cache first, D1
+    // fallback, best-effort 60s cache write. Skipped when no requesterUserId
+    // is supplied to preserve the legacy grace period (matches reading.ts).
+    if (effectiveUserId) {
+      const cacheKey = `${ENTITLEMENT_CACHE_KEY_PREFIX}${effectiveUserId}`;
+      const cached = await c.env.KV.get(cacheKey);
+      let isPro: boolean;
+      if (cached === '1' || cached === '0') {
+        isPro = cached === '1';
+      } else {
+        const userResult = await c.env.DB.prepare(
+          'SELECT is_pro FROM users WHERE id = ?'
+        ).bind(effectiveUserId).first<{ is_pro: number }>();
+        isPro = userResult?.is_pro === 1;
+        // Best-effort cache write — a KV failure must not break the gate.
+        try {
+          await c.env.KV.put(cacheKey, isPro ? '1' : '0', {
+            expirationTtl: ENTITLEMENT_CACHE_TTL_SECONDS,
+          });
+        } catch (kvError) {
+          console.error('Entitlement cache write failed:', String(kvError));
+        }
+      }
+
+      if (!isPro) {
+        return c.json(
+          {
+            error: 'Bestie Compare is a Pro feature. Upgrade to unlock compatibility analysis.',
+            code: 'pro_required',
+            entitlement: 'pro',
+          },
+          402,
+        );
+      }
     }
 
     if (!readingIdA || !readingIdB) {
