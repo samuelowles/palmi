@@ -25,6 +25,14 @@ interface OpenAIVisionResponse {
   choices?: Array<{
     message?: {
       content?: string;
+      /**
+       * Set when the model declines to analyze the image (content policy,
+       * safety, or unsupported input). The text itself is NOT forwarded to
+       * the route — issue #89 requires that error bodies never leak
+       * upstream details, and the refusal string can include vendor-formatted
+       * classifications we don't want to expose.
+       */
+      refusal?: string;
     };
   }>;
   usage?: {
@@ -50,10 +58,10 @@ export interface PalmVisionResult {
  * (request/response bodies, image bytes, API keys).
  */
 export class PalmVisionError extends Error {
-  readonly code: 'upstream_unavailable' | 'invalid_response' | 'no_content';
+  readonly code: 'upstream_unavailable' | 'invalid_response' | 'no_content' | 'refusal';
 
   constructor(
-    code: 'upstream_unavailable' | 'invalid_response' | 'no_content',
+    code: 'upstream_unavailable' | 'invalid_response' | 'no_content' | 'refusal',
     message: string,
   ) {
     super(message);
@@ -107,6 +115,17 @@ export async function analyzePalm(
   }
 
   const data = await response.json() as OpenAIVisionResponse;
+  const refusal = data.choices?.[0]?.message?.refusal;
+
+  // Model declined to analyze the image — typically a content-policy
+  // refusal. Issue #89 surfaces this as a 422 to the client. We must NOT
+  // include the refusal text in the thrown message: the route handler logs
+  // error messages via `console.error`, and the refusal string can hint at
+  // vendor-side classification rules we don't want to surface.
+  if (refusal) {
+    throw new PalmVisionError('refusal', 'Image could not be analyzed');
+  }
+
   const content = data.choices?.[0]?.message?.content;
 
   if (!content) {
