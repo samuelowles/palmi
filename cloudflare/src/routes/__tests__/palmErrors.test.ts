@@ -345,6 +345,50 @@ describe('POST /api/read-palm - 502 vision upstream unavailable (issue #89)', ()
     const body = (await res.json()) as { code: string };
     expect(body.code).toBe('vision_upstream_unavailable');
   });
+
+  // Issue #98: timeout surfaces as upstream_unavailable → 502.
+  // The env var OPENAI_VISION_TIMEOUT_MS is set to '50' in makeEnv(), so a
+  // fetch that hangs past ~50ms is aborted and converted to a 502.
+  it('returns 502 + code:vision_upstream_unavailable when the vision request times out (issue #98)', async () => {
+    fetchMock.mockImplementationOnce(async (_input, init) => {
+      // Sleep longer than the 50ms timeout configured in makeEnv(), but
+      // honor the AbortSignal so AbortSignal.timeout() actually fires.
+      // The mock rejects with an AbortError when aborted; the route
+      // handler must map that to 502 / vision_upstream_unavailable.
+      const signal = init?.signal;
+      return new Promise((resolve, reject) => {
+        const timer = setTimeout(
+          () => resolve(jsonResponse(validVisionResponse())),
+          200,
+        );
+        if (signal) {
+          signal.addEventListener('abort', () => {
+            clearTimeout(timer);
+            const err = new Error('aborted');
+            err.name = 'AbortError';
+            reject(err);
+          });
+        }
+      });
+    });
+
+    const app = buildApp();
+    // Issue #98: override the timeout locally for this test only, so other
+    // tests using makeEnv() don't have their (slower) fetch mock
+    // spuriously aborted by a 50 ms budget.
+    const env: Env = { ...makeEnv(), OPENAI_VISION_TIMEOUT_MS: '50' };
+    const res = await postReadPalm(app, env, {
+      imageBase64: TINY_IMAGE_BASE64,
+      userId: 'u-1',
+    });
+    expect(res.status).toBe(502);
+    const body = (await res.json()) as { code: string; error: string };
+    expect(body.code).toBe('vision_upstream_unavailable');
+    // Must use the generic safe message, not leak the abort reason.
+    expect(body.error.toLowerCase()).toContain('unavailable');
+    expect(body.error).not.toMatch(/aborted/i);
+    expect(body.error).not.toMatch(/AbortError/);
+  });
 });
 
 // ---------------------------------------------------------------------------

@@ -24,6 +24,12 @@ export interface Env {
   TURNSTILE_SECRET_KEY: string;
   ENVIRONMENT: string;
   JWT_SECRET: string;
+  /**
+   * Optional per-call timeout (ms) for the OpenAI vision request. Issue #98.
+   * Numeric string; falls back to the lib default (10 s) when missing or
+   * unparseable.
+   */
+  OPENAI_VISION_TIMEOUT_MS?: string;
 }
 
 const app = new Hono<{ Bindings: Env }>();

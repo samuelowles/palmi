@@ -156,7 +156,14 @@ palmRoute.post('/read-palm', async (c) => {
     const isPro = userResult?.is_pro === 1;
 
     // Step 1: Analyze palm with GPT-5.4-mini
-    const { analysis, usage: visionUsage } = await analyzePalm(imageBase64, c.env.OPENAI_API_KEY);
+    // Issue #98: timeout is configurable per-environment via
+    // OPENAI_VISION_TIMEOUT_MS. We only override when the env var parses,
+    // so the lib's DEFAULT_VISION_TIMEOUT_MS (10 s) is the single source
+    // of truth for the fallback.
+    const parsedTimeout = parseInt(c.env.OPENAI_VISION_TIMEOUT_MS ?? '', 10);
+    const { analysis, usage: visionUsage } = parsedTimeout > 0
+      ? await analyzePalm(imageBase64, c.env.OPENAI_API_KEY, parsedTimeout)
+      : await analyzePalm(imageBase64, c.env.OPENAI_API_KEY);
 
     // Step 2: Synthesize readings with DeepSeek
     const { readings: synthesized, usage: synthesisUsage } = await synthesizeAllLines(

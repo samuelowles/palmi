@@ -42,6 +42,9 @@ interface OpenAIVisionResponse {
   };
 }
 
+/** Default per-call timeout for the OpenAI vision request. Issue #98. */
+const DEFAULT_VISION_TIMEOUT_MS = 10_000;
+
 /** Result envelope from {@link analyzePalm}. */
 export interface PalmVisionResult {
   analysis: PalmAnalysis;
@@ -72,37 +75,59 @@ export class PalmVisionError extends Error {
 
 export async function analyzePalm(
   imageBase64: string,
-  apiKey: string
+  apiKey: string,
+  /**
+   * Per-call timeout in milliseconds. Issue #98: configurable, defaults to
+   * {@link DEFAULT_VISION_TIMEOUT_MS} (10 s). Surfaced as `upstream_unavailable`
+   * so the route returns 502 — never leaked as a 504 / network error to the
+   * client.
+   */
+  timeoutMs: number = DEFAULT_VISION_TIMEOUT_MS,
 ): Promise<PalmVisionResult> {
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: 'gpt-5.4-mini',
-      messages: [
-        { role: 'system', content: SYSTEM_PROMPT },
-        {
-          role: 'user',
-          content: [
-            { type: 'text', text: 'Analyze this palm and provide a detailed reading.' },
-            {
-              type: 'image_url',
-              image_url: {
-                url: `data:image/jpeg;base64,${imageBase64}`,
-                detail: 'high',
+  let response: Response;
+  try {
+    response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'gpt-5.4-mini',
+        messages: [
+          { role: 'system', content: SYSTEM_PROMPT },
+          {
+            role: 'user',
+            content: [
+              { type: 'text', text: 'Analyze this palm and provide a detailed reading.' },
+              {
+                type: 'image_url',
+                image_url: {
+                  url: `data:image/jpeg;base64,${imageBase64}`,
+                  detail: 'high',
+                },
               },
-            },
-          ],
-        },
-      ],
-      response_format: { type: 'json_object' },
-      max_completion_tokens: 2000,
-      temperature: 0.8,
-    }),
-  });
+            ],
+          },
+        ],
+        response_format: { type: 'json_object' },
+        max_completion_tokens: 2000,
+        temperature: 0.8,
+      }),
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+  } catch (err) {
+    // Issue #98: a timeout (AbortSignal.timeout fires) maps to
+    // `upstream_unavailable` so the route returns 502. Other fetch-level
+    // failures (DNS, connection reset, unexpected throws from a custom
+    // fetch shim) propagate so the route's outer catch emits a generic
+    // 500 / internal_error.
+    if (err instanceof Error && err.name === 'AbortError') {
+      console.error(`OpenAI vision request timed out after ${timeoutMs}ms`);
+      throw new PalmVisionError('upstream_unavailable', 'Analysis service unavailable');
+    }
+    throw err;
+  }
 
   if (!response.ok) {
     // Consume the body so the connection can be reused, but do not log or
